@@ -1,13 +1,15 @@
-// Session/role shape for access-level filtering (docs/ARCHITECTURE.md §6).
+// Session/role shape for the legacy Destination Command Centre's access-
+// level filtering (docs/ARCHITECTURE.md §6).
 //
-// TODO(auth): this is a development-only stand-in. It reads a role from an
-// unsigned cookie so the rest of the app (and this session's manual
-// testing) has something real to filter against, but it performs no
-// authentication whatsoever. Replace with NextAuth/Clerk/SSO before any
-// real deployment — nothing here should be mistaken for production auth.
+// The original development-only role cookie has been removed: it let anyone
+// claim ADMIN. The destination dashboard is now a platform-staff tool, so its
+// legacy role is derived from real authentication — platform staff map to
+// ADMIN, everyone else (including signed-out visitors) to PUBLIC, which the
+// legacy API routes already reject for every write.
 
-import { cookies } from "next/headers";
 import type { Role } from "@/generated/prisma";
+import { isPlatformStaff } from "@/lib/platform/permissions";
+import { getCurrentUser } from "@/lib/web/session";
 
 export interface Session {
   role: Role;
@@ -15,19 +17,10 @@ export interface Session {
   email: string | null;
 }
 
-export const DEV_ROLE_COOKIE = "dev-role";
-
 export async function getSession(): Promise<Session> {
-  const store = await cookies();
-  const roleCookie = store.get(DEV_ROLE_COOKIE)?.value;
-  const role: Role =
-    roleCookie === "ADMIN" || roleCookie === "PARTNER" || roleCookie === "BUSINESS"
-      ? roleCookie
-      : "PUBLIC";
-
-  return {
-    role,
-    businessId: role === "BUSINESS" ? "dev-business" : null,
-    email: role === "PUBLIC" ? null : `${role.toLowerCase()}@dev.local`,
-  };
+  const user = await getCurrentUser();
+  if (user && isPlatformStaff(user.platformRole)) {
+    return { role: "ADMIN", businessId: null, email: user.email };
+  }
+  return { role: "PUBLIC", businessId: null, email: user?.email ?? null };
 }

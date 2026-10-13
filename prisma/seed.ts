@@ -8,6 +8,7 @@
 
 import { PrismaClient } from "../src/generated/prisma";
 import { rotorua } from "../src/config/destinations/rotorua";
+import { tourismPlans, tourismProduct } from "./catalogue/tourism";
 
 const prisma = new PrismaClient();
 
@@ -52,6 +53,34 @@ async function main() {
     `Seeded destination "${destination.name}", ${rotorua.experienceCategories.length} experience categories, ${rotorua.trackedPrompts.length} tracked prompts.`
   );
   console.log("No observation data was seeded — see docs/ARCHITECTURE.md §1/§10 for how to add real data.");
+
+  await seedCatalogue();
+}
+
+// Licensed-platform catalogue (products, versions, plans). Upserts by key so
+// re-running the seed applies edited commercial rules without touching
+// licences already granted to customers.
+async function seedCatalogue() {
+  const { version, ...productData } = tourismProduct;
+  const product = await prisma.product.upsert({
+    where: { key: productData.key },
+    update: productData,
+    create: productData,
+  });
+  await prisma.productVersion.updateMany({ where: { productId: product.id }, data: { isCurrent: false } });
+  await prisma.productVersion.upsert({
+    where: { productId_version: { productId: product.id, version: version.version } },
+    update: { releaseNotes: version.releaseNotes, isCurrent: true },
+    create: { productId: product.id, ...version, isCurrent: true },
+  });
+  for (const plan of tourismPlans) {
+    await prisma.plan.upsert({
+      where: { key: plan.key },
+      update: { ...plan, productId: product.id },
+      create: { ...plan, productId: product.id },
+    });
+  }
+  console.log(`Seeded catalogue: ${product.name} with ${tourismPlans.length} plans (prices unset — on request).`);
 }
 
 main()

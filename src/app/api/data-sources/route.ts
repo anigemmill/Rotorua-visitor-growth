@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveDestinationConfig } from "@/config/destinations";
+import { getSession } from "@/lib/session";
 
 export async function GET() {
+  // Import batches include operator emails — staff only.
+  if ((await getSession()).role !== "ADMIN") {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const destinationConfig = getActiveDestinationConfig();
   const destination = await prisma.destination.findUnique({
     where: { slug: destinationConfig.slug },

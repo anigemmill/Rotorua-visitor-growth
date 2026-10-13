@@ -1,5 +1,12 @@
 # Rotorua Visitor Growth & Flow Intelligence — Architecture
 
+> **Superseded in part (2026-10-13).** This describes the original
+> destination MVP. The licensed multi-tenant platform built around it is
+> documented in [`docs/platform/`](platform/ARCHITECTURE.md). In particular,
+> §6's development role switcher has been removed: the destination
+> dashboard now lives at `/destination`, is restricted to platform staff,
+> and derives its role from real authentication.
+
 This document is written before the bulk of the code, per the project brief's
 requirement to define the model before building. It covers the twelve design
 points the brief asks for, then states the MVP boundary explicitly.

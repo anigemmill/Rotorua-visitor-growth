@@ -1,4 +1,73 @@
-# Rotorua Visitor Growth & Flow Intelligence
+# Tourism Intelligence Platform
+
+A multi-tenant SaaS platform that licenses complete AI agent ecosystems to
+businesses. The first product is the **Tourism Intelligence Ecosystem**:
+customers buy a licence, create a workspace, describe their business,
+connect their own tools (read-only), and a coordinated set of specialist
+agents turns that data into evidence-backed, prioritised actions.
+
+**Current state: Phase 1 (platform foundation) is built and tested.**
+Provider connectors (Phase 2), agent orchestration (Phase 3) and later
+phases are designed but not built — the app says so rather than showing
+sample data.
+
+Platform documentation lives in [`docs/platform/`](docs/platform/):
+[architecture](docs/platform/ARCHITECTURE.md) ·
+[data model](docs/platform/DATA_MODEL.md) ·
+[security](docs/platform/SECURITY.md) ·
+[integrations](docs/platform/INTEGRATIONS.md) ·
+[agent register](docs/platform/AGENT_REGISTER.md) ·
+[roadmap, risks & acceptance tests](docs/platform/ROADMAP.md).
+
+## Quick start
+
+```bash
+npm install
+cp .env.example .env     # set DATABASE_URL, CREDENTIAL_ENCRYPTION_KEYS, TEST_DATABASE_URL
+npx prisma migrate dev
+npm run db:seed          # catalogue (products/plans) + destination reference data; no customer data
+npm run dev
+```
+
+1. Open http://localhost:3000, create an account and a workspace.
+2. Start the 30-day pilot under **Licence & plan**, then work through
+   onboarding (profile → knowledge → connections → validation → activation).
+3. To use the admin area, promote an account (there is no web path to do this):
+   `npm run admin:promote -- you@example.com SUPER_ADMIN`, then sign in again
+   and open `/admin`.
+
+## Checks
+
+```bash
+npm test            # Vitest: unit + integration tests against TEST_DATABASE_URL (must contain "test")
+npm run lint
+npm run typecheck
+npm run build
+node tests/e2e/smoke.cjs   # browser smoke test against a running server (needs playwright)
+```
+
+## Layout
+
+| Path | What |
+|---|---|
+| `src/lib/platform/` | Domain services: auth, sessions, organisations, tenant-scoped db, licensing/entitlements, onboarding, connections, admin, audit, crypto, rate limiting |
+| `src/lib/integrations/` | Connector contract and integration catalogue |
+| `src/lib/agents/` | Agent register and workflow stages |
+| `src/lib/web/` | Next.js guards (session cookie → user → workspace/staff context) and action helpers |
+| `src/app/(auth)`, `src/app/workspaces`, `src/app/app/[org]` | Customer application |
+| `src/app/admin` | Platform admin (staff only) |
+| `src/app/destination` | Original Rotorua Destination Command Centre (staff only) |
+| `prisma/catalogue/` | Commercial configuration (plans, entitlements) |
+| `tests/` | Unit, integration and e2e tests |
+
+---
+
+## Original project: Rotorua Destination Command Centre
+
+The sections below describe the destination-intelligence MVP this platform
+grew from. It now lives at `/destination` and is restricted to platform
+staff; its role is derived from real authentication (the old development
+role switcher was removed because it let anyone act as an admin).
 
 An AI destination intelligence platform for Rotorua, New Zealand — a
 strategic decision-support layer for the visitor economy, not a generic
@@ -40,10 +109,7 @@ npm run db:seed        # seeds destination + experience-category + tracked-promp
 npm run dev
 ```
 
-Open http://localhost:3000. Use the role switcher in the sidebar to try the
-app as `PARTNER`/`ADMIN` (unlocks Data Governance's import/connector tools,
-the Scenario Engine and AI Discovery run button) — there's no real login
-system yet, see `src/lib/session.ts`.
+Open http://localhost:3000/destination while signed in as platform staff.
 
 ### Other scripts
 

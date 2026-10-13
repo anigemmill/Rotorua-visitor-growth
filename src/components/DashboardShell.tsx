@@ -1,31 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import type { Role } from "@/generated/prisma";
+import { usePathname } from "next/navigation";
 
 const NAV = [
-  { href: "/", label: "Executive Overview" },
-  { href: "/visitors", label: "Visitor Demand, Spend & Stay" },
-  { href: "/demand", label: "Search & AI Demand Signals" },
-  { href: "/accommodation", label: "Accommodation" },
-  { href: "/weather", label: "Weather" },
-  { href: "/events", label: "Events" },
-  { href: "/flow-capacity", label: "Visitor Flow & Capacity" },
-  { href: "/opportunities", label: "Opportunities & Campaigns" },
-  { href: "/ai-visibility", label: "AI Discovery" },
-  { href: "/scenario", label: "Scenario Engine" },
-  { href: "/data-governance", label: "Data Governance" },
+  { href: "/destination", label: "Executive Overview" },
+  { href: "/destination/visitors", label: "Visitor Demand, Spend & Stay" },
+  { href: "/destination/demand", label: "Search & AI Demand Signals" },
+  { href: "/destination/accommodation", label: "Accommodation" },
+  { href: "/destination/weather", label: "Weather" },
+  { href: "/destination/events", label: "Events" },
+  { href: "/destination/flow-capacity", label: "Visitor Flow & Capacity" },
+  { href: "/destination/opportunities", label: "Opportunities & Campaigns" },
+  { href: "/destination/ai-visibility", label: "AI Discovery" },
+  { href: "/destination/scenario", label: "Scenario Engine" },
+  { href: "/destination/data-governance", label: "Data Governance" },
 ];
 
-export function DashboardShell({
-  children,
-  role,
-}: {
-  children: React.ReactNode;
-  role: Role;
-}) {
+export function DashboardShell({ children, staffEmail }: { children: React.ReactNode; staffEmail: string | null }) {
   const pathname = usePathname();
 
   return (
@@ -53,50 +45,15 @@ export function DashboardShell({
             );
           })}
         </nav>
-        <div className="mt-auto">
-          <RoleSwitcher role={role} />
+        <div className="mt-auto rounded-lg border border-black/10 dark:border-white/10 p-3 text-xs text-black/60 dark:text-white/60">
+          <p>Platform staff tool</p>
+          {staffEmail && <p className="mt-0.5 truncate">{staffEmail}</p>}
+          <Link href="/admin" className="mt-1.5 inline-block underline">
+            Back to admin
+          </Link>
         </div>
       </aside>
       <main className="flex-1 p-8 max-w-6xl">{children}</main>
-    </div>
-  );
-}
-
-const ROLES: Role[] = ["PUBLIC", "BUSINESS", "PARTNER", "ADMIN"];
-
-function RoleSwitcher({ role }: { role: Role }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [current, setCurrent] = useState(role);
-
-  return (
-    <div className="rounded-lg border border-black/10 dark:border-white/10 p-3 text-xs">
-      <p className="text-black/50 dark:text-white/50 mb-1.5">
-        Dev session role (no real auth yet — see docs/ARCHITECTURE.md §6)
-      </p>
-      <select
-        className="w-full rounded border border-black/15 dark:border-white/15 bg-transparent px-2 py-1 disabled:opacity-50"
-        value={current}
-        disabled={pending}
-        onChange={(e) => {
-          const next = e.target.value as Role;
-          setCurrent(next);
-          startTransition(async () => {
-            await fetch("/api/dev-session", {
-              method: "POST",
-              headers: { "content-type": "application/json" },
-              body: JSON.stringify({ role: next }),
-            });
-            router.refresh();
-          });
-        }}
-      >
-        {ROLES.map((r) => (
-          <option key={r} value={r}>
-            {r}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

@@ -619,3 +619,323 @@ model ScenarioQuery {
   llmAssisted Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
+
+// ===========================================================================
+// LICENSED PLATFORM FOUNDATION (Phase 1)
+// See docs/platform/ARCHITECTURE.md and docs/platform/DATA_MODEL.md.
+//
+// Tenant boundary: Organization. Every tenant-owned row carries a non-null
+// organizationId and is only read/written through the tenant-scoped client
+// in src/lib/platform/tenant-db.ts, which injects that filter. Platform
+// staff tooling (src/lib/platform/admin.ts) is the only cross-tenant path
+// and is audited.
+// ===========================================================================
+
+enum PlatformRole {
+  NONE // ordinary customer user
+  SUPPORT // platform staff — read-only cross-tenant access
+  SUPER_ADMIN // platform staff — may manage licences, products and organisations
+}
+
+enum MembershipRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  DELETION_REQUESTED
+}
+
+enum OnboardingStage {
+  BUSINESS_PROFILE
+  BUSINESS_KNOWLEDGE
+  INTEGRATIONS
+  VALIDATION
+  ACTIVATION
+  COMPLETE
+}
+
+enum LicenseStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+  SUSPENDED
+}
+
+enum BillingInterval {
+  MONTH
+  YEAR
+  CUSTOM
+}
+
+enum IntegrationStatus {
+  PENDING // configured, not yet validated
+  CONNECTED
+  ERROR
+  REVOKED // disconnected by the customer or revoked at the provider
+}
+
+model User {
+  id              String       @id @default(cuid())
+  email           String       @unique // stored lower-cased
+  name            String
+  passwordHash    String
+  platformRole    PlatformRole @default(NONE)
+  emailVerifiedAt DateTime?
+  disabledAt      DateTime?
+  lastLoginAt     DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  sessions    AuthSession[]
+  memberships Membership[]
+}
+
+// Opaque, server-side sessions. Only the SHA-256 of the cookie token is
+// stored, so a database read does not yield usable session cookies.
+model AuthSession {
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  lastSeenAt DateTime  @default(now())
+  revokedAt  DateTime?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([userId])
+}
+
+model Organization {
+  id                  String             @id @default(cuid())
+  slug                String             @unique
+  name                String
+  status              OrganizationStatus @default(ACTIVE)
+  onboardingStage     OnboardingStage    @default(BUSINESS_PROFILE)
+  activatedAt         DateTime?
+  deletionRequestedAt DateTime?
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  memberships  Membership[]
+  licenses     License[]
+  profile      BusinessProfile?
+  brands       Brand[]
+  integrations IntegrationConnection[]
+  auditEvents  AuditEvent[]
+}
+
+model Membership {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           MembershipRole
+  createdAt      DateTime       @default(now())
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Catalogue & licensing. Commercial rules (prices, limits, features) live in
+// data, not code, so they can change without a release.
+// ---------------------------------------------------------------------------
+
+model Product {
+  id          String   @id @default(cuid())
+  key         String   @unique // e.g. "tourism-intelligence"
+  name        String
+  tagline     String
+  description String
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  versions ProductVersion[]
+  plans    Plan[]
+  licenses License[]
+}
+
+model ProductVersion {
+  id           String   @id @default(cuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  version      String // semver of the ecosystem definition
+  releaseNotes String
+  isCurrent    Boolean  @default(false)
+  releasedAt   DateTime @default(now())
+
+  @@unique([productId, version])
+}
+
+model Plan {
+  id              String          @id @default(cuid())
+  productId       String
+  product         Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  key             String          @unique // e.g. "tourism-pilot"
+  name            String
+  description     String
+  billingInterval BillingInterval
+  priceCents      Int? // null = price on request / not yet set
+  currency        String          @default("NZD")
+  isPublic        Boolean         @default(true) // shown in the self-serve catalogue
+  selfServeTrial  Boolean         @default(false) // customer may start a trial without staff
+  trialDays       Int?
+  entitlements    Json // validated by src/lib/platform/entitlements.ts (EntitlementsSchema)
+  active          Boolean         @default(true)
+  sortOrder       Int             @default(0)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  licenses License[]
+}
+
+model License {
+  id                     String        @id @default(cuid())
+  organizationId         String
+  organization           Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  productId              String
+  product                Product       @relation(fields: [productId], references: [id])
+  planId                 String
+  plan                   Plan          @relation(fields: [planId], references: [id])
+  status                 LicenseStatus
+  startsAt               DateTime      @default(now())
+  trialEndsAt            DateTime?
+  currentPeriodEnd       DateTime?
+  graceDays              Int           @default(7)
+  cancelledAt            DateTime?
+  entitlementOverrides   Json? // partial EntitlementsSchema, merged over the plan's
+  // Billing-provider references (Stripe or invoicing). Null until billing is wired.
+  billingProvider        String?
+  externalCustomerId     String?
+  externalSubscriptionId String?
+  notes                  String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+
+  @@unique([organizationId, productId])
+}
+
+// ---------------------------------------------------------------------------
+// Onboarding: business profile (stage 1) and business knowledge (stage 2).
+// Customer-specific only — universal platform instructions and industry
+// knowledge live in code/config, never in these rows.
+// ---------------------------------------------------------------------------
+
+model BusinessProfile {
+  id             String       @id @default(cuid())
+  organizationId String       @unique
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Stage 1 — business profile
+  businessName       String
+  website            String?
+  country            String?
+  timeZone           String?
+  businessType       String?
+  products           String[]
+  targetAudiences    String[]
+  mainMarkets        String[]
+  objectives         String[]
+  seasonalPriorities String?
+  competitors        String[]
+  marketingChannels  String[]
+  kpis               String[]
+  constraints        String?
+
+  // Stage 2 — business knowledge
+  positioning         String?
+  approvedMessaging   String?
+  toneOfVoice         String?
+  uniqueSellingPoints String[]
+  pricingNotes        String?
+  brandRestrictions   String?
+  culturalGuidelines  String?
+
+  updatedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Brand {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String
+  website        String?
+  description    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, name])
+}
+
+// ---------------------------------------------------------------------------
+// Integration connections. Provider definitions live in code
+// (src/lib/integrations/registry.ts); this row is one tenant's connection.
+// Credentials are AES-256-GCM encrypted with the row identity as AAD and are
+// never sent to the browser or to a model.
+// ---------------------------------------------------------------------------
+
+model IntegrationConnection {
+  id                    String            @id @default(cuid())
+  organizationId        String
+  organization          Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerKey           String
+  status                IntegrationStatus @default(PENDING)
+  externalAccountId     String // provider account/property id, or the domain for the website connector
+  externalAccountName   String?
+  config                Json?
+  scopesGranted         String[]
+  credentialsCiphertext String?
+  connectedById         String?
+  connectedAt           DateTime?
+  lastSyncAt            DateTime?
+  lastSuccessfulSyncAt  DateTime?
+  lastErrorAt           DateTime?
+  lastErrorMessage      String?
+  disconnectedAt        DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+
+  @@unique([organizationId, providerKey, externalAccountId])
+  @@index([organizationId])
+}
+
+// ---------------------------------------------------------------------------
+// Security & operations
+// ---------------------------------------------------------------------------
+
+model AuditEvent {
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorUserId    String?
+  actorEmail     String? // denormalised so the trail survives user deletion
+  action         String // e.g. "auth.login", "license.granted", "integration.disconnected"
+  targetType     String?
+  targetId       String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime      @default(now())
+
+  @@index([organizationId, createdAt])
+  @@index([action, createdAt])
+}
+
+// Fixed-window counters for rate limiting (login attempts etc.). Postgres-
+// backed so limits hold across server instances without extra infra.
+model RateLimitBucket {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+}
