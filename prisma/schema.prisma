@@ -730,6 +730,8 @@ model Organization {
   brands       Brand[]
   integrations IntegrationConnection[]
   auditEvents  AuditEvent[]
+  usageRecords UsageRecord[]
+  usageAlerts  UsageAlert[]
 }
 
 model Membership {
@@ -939,4 +941,63 @@ model RateLimitBucket {
   key         String   @id
   windowStart DateTime
   count       Int
+}
+
+// ---------------------------------------------------------------------------
+// AI usage metering (docs/platform/USAGE_ALLOWANCE.md)
+// ---------------------------------------------------------------------------
+
+// Provider list prices, versioned by effective date. Money is stored in
+// micro-USD per million tokens so arithmetic stays in integers.
+model ModelRate {
+  id                      String   @id @default(cuid())
+  provider                String   @default("anthropic")
+  model                   String
+  inputMicrosPerMTok      Int
+  outputMicrosPerMTok     Int
+  cacheWriteMicrosPerMTok Int
+  cacheReadMicrosPerMTok  Int
+  batchDiscountPercent    Int      @default(50)
+  effectiveFrom           DateTime
+  source                  String // where the price was taken from
+  createdAt               DateTime @default(now())
+
+  @@unique([provider, model, effectiveFrom])
+}
+
+// One row per billable model call (or batch result). Cost is computed from
+// ModelRate at write time and never recalculated.
+model UsageRecord {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  occurredAt       DateTime     @default(now())
+  provider         String       @default("anthropic")
+  model            String
+  workflowKey      String?
+  agentKey         String?
+  referenceId      String? // e.g. AgentRun id
+  idempotencyKey   String? // provider request id, so retries never double-count
+  inputTokens      Int
+  outputTokens     Int
+  cacheReadTokens  Int          @default(0)
+  cacheWriteTokens Int          @default(0)
+  isBatch          Boolean      @default(false)
+  costMicrosUsd    Int
+
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, occurredAt])
+}
+
+// Threshold notifications already raised in a period (deduplication).
+model UsageAlert {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  periodStart    DateTime
+  level          String // "warning" | "limit_reached"
+  usedMicrosUsd  Int
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, periodStart, level])
 }

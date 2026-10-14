@@ -70,3 +70,30 @@ describe("admin authorisation", () => {
     expect(JSON.stringify(detail)).not.toContain("v1.secret");
   });
 });
+
+describe("AI allowance top-up", () => {
+  it("staff can raise and then clear a licence's AI allowance without touching other overrides", async () => {
+    await makeCatalogue();
+    const { org, ctx } = await makeOrg("Customer");
+    const s = await staff("SUPER_ADMIN");
+    await setLicense(s, org.id, { planKey: "tourism-professional", status: "ACTIVE" });
+    await prisma.license.updateMany({ where: { organizationId: org.id }, data: { entitlementOverrides: { limits: { brands: 9 } } } });
+
+    await setLicense(s, org.id, { planKey: "tourism-professional", status: "ACTIVE", aiAllowanceUsd: "40", aiHardLimitPercent: "120" });
+    let e = (await getLicenseState(ctx.db)).entitlements;
+    expect(e.ai).toMatchObject({ monthlyAllowanceUsd: 40, hardLimitPercent: 120 });
+    expect(e.limits.brands).toBe(9);
+
+    await setLicense(s, org.id, { planKey: "tourism-professional", status: "ACTIVE" });
+    e = (await getLicenseState(ctx.db)).entitlements;
+    expect(e.ai?.monthlyAllowanceUsd).toBe(10); // back to the plan's allowance
+    expect(e.limits.brands).toBe(9);
+
+    await expect(
+      setLicense(s, org.id, { planKey: "tourism-professional", status: "ACTIVE", aiAllowanceUsd: "-5" })
+    ).rejects.toBeInstanceOf(ValidationError);
+    await expect(
+      setLicense(s, org.id, { planKey: "tourism-professional", status: "ACTIVE", aiHardLimitPercent: "500" })
+    ).rejects.toBeInstanceOf(ValidationError);
+  });
+});

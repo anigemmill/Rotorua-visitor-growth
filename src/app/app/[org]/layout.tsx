@@ -4,12 +4,14 @@ import { NavLink } from "@/components/platform/NavLink";
 import { Notice } from "@/components/platform/ui";
 import { getLicenseState } from "@/lib/platform/licensing";
 import { MEMBERSHIP_ROLE_LABELS } from "@/lib/platform/permissions";
+import { getAiUsageStatus } from "@/lib/platform/usage";
 import { requireOrg } from "@/lib/web/session";
 
 export default async function WorkspaceLayout({ children, params }: LayoutProps<"/app/[org]">) {
   const { org } = await params;
   const ctx = await requireOrg(org);
   const license = await getLicenseState(ctx.db);
+  const usage = license.license ? await getAiUsageStatus(ctx.db, license.entitlements) : null;
   const base = `/app/${ctx.organization.slug}`;
 
   return (
@@ -75,6 +77,18 @@ export default async function WorkspaceLayout({ children, params }: LayoutProps<
           {license.access.inGracePeriod && (
             <div className="mb-6">
               <Notice tone="warn">{license.access.reason} Access continues during a short grace period.</Notice>
+            </div>
+          )}
+          {(usage?.state === "warning" || usage?.state === "limit_reached") && (
+            <div className="mb-6">
+              <Notice tone={usage.state === "limit_reached" ? "bad" : "warn"}>
+                {usage.state === "limit_reached"
+                  ? "Your AI usage allowance for this month is used up. Analysis is paused until it resets."
+                  : `You've used over ${usage.warnAtPercent}% of this month's AI usage allowance.`}{" "}
+                <Link href={`${base}/settings/licence`} className="font-medium underline">
+                  Details
+                </Link>
+              </Notice>
             </div>
           )}
           {children}

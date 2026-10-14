@@ -16,6 +16,8 @@ export async function setLicenseAction(_: ActionState, fd: FormData): Promise<Ac
       currentPeriodEnd: input.currentPeriodEnd,
       graceDays: input.graceDays,
       notes: input.notes,
+      aiAllowanceUsd: input.aiAllowanceUsd,
+      aiHardLimitPercent: input.aiHardLimitPercent,
     });
     return "Licence saved.";
   });

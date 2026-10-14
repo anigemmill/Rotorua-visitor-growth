@@ -5,11 +5,13 @@
 // SUPPORT: read-only. SUPER_ADMIN: may also change licences.
 
 import * as z from "zod";
-import type { LicenseStatus } from "@/generated/prisma";
+import { Prisma, type LicenseStatus } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { recordAudit, type Actor } from "./audit";
 import { fieldErrors, type PublicUser } from "./auth";
-import { mergeEntitlements, resolveAccess } from "./entitlements";
+import { EntitlementOverridesSchema, mergeEntitlements, resolveAccess } from "./entitlements";
+import { getAiUsageStatus, monthPeriod, usageByOrganization } from "./usage";
+import { tenantDb } from "./tenant-db";
 import { ForbiddenError, NotFoundError, ValidationError } from "./errors";
 import { canManagePlatform, isPlatformStaff } from "./permissions";
 
@@ -98,8 +100,13 @@ export async function getOrganizationDetail(staff: StaffContext, organizationId:
     targetId: org.id,
   });
   const now = new Date();
+  const current = org.licenses[0];
+  const aiUsage = current
+    ? await getAiUsageStatus(tenantDb(org.id), mergeEntitlements(current.plan.entitlements, current.entitlementOverrides), now)
+    : null;
   return {
     ...org,
+    aiUsage,
     licenses: org.licenses.map((l) => ({
       ...l,
       access: resolveAccess(l, now),
@@ -127,6 +134,17 @@ export const LicenseUpdateSchema = z.object({
   trialEndsAt: optionalDate,
   currentPeriodEnd: optionalDate,
   graceDays: z.coerce.number().int().min(0).max(90).default(7),
+  /** AI allowance top-up for this licence (USD/month). Blank = use the plan's allowance. */
+  aiAllowanceUsd: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? Number(v) : null))
+    .refine((v) => v === null || (Number.isFinite(v) && v > 0 && v <= 100_000), "Enter a positive amount."),
+  aiHardLimitPercent: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() ? Number(v) : null))
+    .refine((v) => v === null || (Number.isInteger(v) && v >= 100 && v <= 200), "Enter a whole number from 100 to 200."),
   notes: z
     .string()
     .optional()
@@ -138,7 +156,7 @@ export async function setLicense(staff: StaffContext, organizationId: string, in
   requireSuperAdmin(staff);
   const parsed = LicenseUpdateSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError("Please check the highlighted fields.", fieldErrors(parsed.error));
-  const { planKey, status, trialEndsAt, currentPeriodEnd, graceDays, notes } = parsed.data;
+  const { planKey, status, trialEndsAt, currentPeriodEnd, graceDays, notes, aiAllowanceUsd, aiHardLimitPercent } = parsed.data;
 
   if (status === "TRIALING" && !trialEndsAt) {
     throw new ValidationError("A trial needs an end date.", { trialEndsAt: ["Required for trials."] });
@@ -151,7 +169,22 @@ export async function setLicense(staff: StaffContext, organizationId: string, in
   const before = await prisma.license.findUnique({
     where: { organizationId_productId: { organizationId, productId: plan.productId } },
   });
+  // Merge the AI override into any existing overrides, keeping other sections.
+  const existingOverrides = before?.entitlementOverrides
+    ? EntitlementOverridesSchema.parse(before.entitlementOverrides)
+    : {};
+  const aiOverride = {
+    ...(aiAllowanceUsd !== null ? { monthlyAllowanceUsd: aiAllowanceUsd } : {}),
+    ...(aiHardLimitPercent !== null ? { hardLimitPercent: aiHardLimitPercent } : {}),
+  };
+  const otherOverrides = { ...existingOverrides };
+  delete otherOverrides.ai;
+  const entitlementOverrides = { ...otherOverrides, ...(Object.keys(aiOverride).length ? { ai: aiOverride } : {}) };
+  // Validate the result against the plan before saving (fails on e.g. a hard limit below warnAt).
+  mergeEntitlements(plan.entitlements, entitlementOverrides);
+
   const data = {
+    entitlementOverrides: Object.keys(entitlementOverrides).length ? entitlementOverrides : Prisma.DbNull,
     planId: plan.id,
     status,
     trialEndsAt,
@@ -173,7 +206,7 @@ export async function setLicense(staff: StaffContext, organizationId: string, in
     targetId: license.id,
     metadata: {
       before: before ? { status: before.status, planId: before.planId } : null,
-      after: { status, plan: planKey },
+      after: { status, plan: planKey, aiOverride: Object.keys(aiOverride).length ? aiOverride : null },
     },
   });
   return license;
@@ -207,4 +240,22 @@ export async function integrationHealth() {
     orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
     take: 500,
   });
+}
+
+/** Model cost per customer this month, highest first (platform cost view). */
+export async function aiCostThisMonth() {
+  const period = monthPeriod();
+  const rows = await usageByOrganization(period);
+  const orgs = await prisma.organization.findMany({
+    where: { id: { in: rows.map((r) => r.organizationId) } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(orgs.map((o) => [o.id, o.name]));
+  return {
+    period,
+    totalMicrosUsd: rows.reduce((n, r) => n + r.costMicrosUsd, 0),
+    rows: rows
+      .map((r) => ({ ...r, name: names.get(r.organizationId) ?? r.organizationId }))
+      .sort((a, b) => b.costMicrosUsd - a.costMicrosUsd),
+  };
 }

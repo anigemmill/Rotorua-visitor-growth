@@ -4,6 +4,8 @@ import { formatPrice, PlanSummary } from "@/components/platform/PlanSummary";
 import { mergeEntitlements } from "@/lib/platform/entitlements";
 import { getLicenseState, listCatalogue } from "@/lib/platform/licensing";
 import { roleCan } from "@/lib/platform/permissions";
+import { getAiUsageStatus } from "@/lib/platform/usage";
+import { UsageMeter } from "@/components/platform/UsageMeter";
 import { requireOrg } from "@/lib/web/session";
 import { startTrialAction } from "../../actions";
 
@@ -13,6 +15,7 @@ export default async function LicencePage({ params }: PageProps<"/app/[org]/sett
   const [state, catalogue] = await Promise.all([getLicenseState(ctx.db), listCatalogue()]);
   const canManage = roleCan(ctx.role, "license.manage");
   const l = state.license;
+  const usage = l ? await getAiUsageStatus(ctx.db, state.entitlements) : null;
 
   return (
     <>
@@ -40,6 +43,11 @@ export default async function LicencePage({ params }: PageProps<"/app/[org]/sett
               <dd>{formatDate(l.trialEndsAt ?? l.currentPeriodEnd)}</dd>
             </div>
           </dl>
+          {usage && (
+            <div className="mt-5 max-w-md">
+              <UsageMeter status={usage} />
+            </div>
+          )}
           <div className="mt-5">
             <p className="text-xs font-medium uppercase text-black/45 dark:text-white/45">Your plan includes</p>
             <div className="mt-2">

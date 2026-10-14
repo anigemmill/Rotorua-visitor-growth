@@ -20,6 +20,8 @@ export default async function OrganizationDetailPage({ params }: PageProps<"/adm
   const [products, audit] = await Promise.all([listPlans(), listAuditEvents({ organizationId: id, take: 50 })]);
   const plans = products.flatMap((p) => p.plans.map((pl) => ({ value: pl.key, label: `${p.name} — ${pl.name}` })));
   const current = org.licenses[0];
+  const aiOverride = (current?.entitlementOverrides as { ai?: { monthlyAllowanceUsd?: number; hardLimitPercent?: number } } | null)?.ai;
+  const usd = (micros: number) => `US$${(micros / 1_000_000).toFixed(2)}`;
 
   return (
     <>
@@ -70,12 +72,39 @@ export default async function OrganizationDetailPage({ params }: PageProps<"/adm
                 <Field name="currentPeriodEnd" label="Period ends" type="date" defaultValue={dateInput(current?.currentPeriodEnd)} />
                 <Field name="graceDays" label="Grace days" type="number" defaultValue={String(current?.graceDays ?? 7)} />
               </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field
+                  name="aiAllowanceUsd"
+                  label="AI allowance override (USD / month)"
+                  type="number"
+                  hint="Blank = plan allowance. Never unlimited."
+                  defaultValue={aiOverride?.monthlyAllowanceUsd?.toString()}
+                />
+                <Field
+                  name="aiHardLimitPercent"
+                  label="Hard limit (% of allowance)"
+                  type="number"
+                  hint="100–200. Blank = plan setting."
+                  defaultValue={aiOverride?.hardLimitPercent?.toString()}
+                />
+              </div>
               <Field name="notes" label="Internal notes" multiline defaultValue={current?.notes} />
               <FormStatus />
               <SubmitButton>Save licence</SubmitButton>
             </ActionForm>
           </Panel>
         )}
+
+        <Panel title="AI usage this month">
+          {!org.aiUsage || org.aiUsage.state === "no_allowance" ? (
+            <p className="text-sm text-black/60">No AI allowance.</p>
+          ) : (
+            <p className="text-sm">
+              {usd(org.aiUsage.usedMicrosUsd)} of {usd(org.aiUsage.allowanceMicrosUsd)} ({Math.round(org.aiUsage.percentUsed)}%) · hard limit{" "}
+              {usd(org.aiUsage.hardLimitMicrosUsd)} · <Pill tone={org.aiUsage.state === "ok" ? "good" : org.aiUsage.state === "warning" ? "warn" : "bad"}>{org.aiUsage.state}</Pill>
+            </p>
+          )}
+        </Panel>
 
         <Panel title="Members">
           <ul className="text-sm">

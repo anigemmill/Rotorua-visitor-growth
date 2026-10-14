@@ -4,6 +4,9 @@ import { signUp, type PublicUser } from "@/lib/platform/auth";
 import { createOrganization, getOrgContext } from "@/lib/platform/organizations";
 
 const PLATFORM_TABLES = [
+  "UsageAlert",
+  "UsageRecord",
+  "ModelRate",
   "AuditEvent",
   "RateLimitBucket",
   "IntegrationConnection",
@@ -82,4 +85,9 @@ export async function makeCatalogue(opts: { trialDays?: number | null } = {}) {
     },
   });
   return { product, trialPlan, paidPlan };
+}
+
+export async function makeModelRates() {
+  const { modelRates } = await import("../../prisma/catalogue/model-rates");
+  await prisma.modelRate.createMany({ data: modelRates });
 }

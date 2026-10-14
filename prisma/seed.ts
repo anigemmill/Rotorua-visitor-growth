@@ -8,6 +8,7 @@
 
 import { PrismaClient } from "../src/generated/prisma";
 import { rotorua } from "../src/config/destinations/rotorua";
+import { modelRates } from "./catalogue/model-rates";
 import { retiredTourismPlans, tourismPlans, tourismProduct } from "./catalogue/tourism";
 
 const prisma = new PrismaClient();
@@ -55,6 +56,19 @@ async function main() {
   console.log("No observation data was seeded — see docs/ARCHITECTURE.md §1/§10 for how to add real data.");
 
   await seedCatalogue();
+  await seedModelRates();
+}
+
+async function seedModelRates() {
+  for (const rate of modelRates) {
+    const { provider, model, effectiveFrom, ...prices } = rate;
+    await prisma.modelRate.upsert({
+      where: { provider_model_effectiveFrom: { provider, model, effectiveFrom } },
+      update: prices,
+      create: rate,
+    });
+  }
+  console.log(`Seeded ${modelRates.length} model rates.`);
 }
 
 // Licensed-platform catalogue (products, versions, plans). Upserts by key so
