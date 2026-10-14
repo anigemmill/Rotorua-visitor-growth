@@ -1,33 +1,24 @@
-// Session/role shape for access-level filtering (docs/ARCHITECTURE.md §6).
+// Compatibility adapter for the destination-intelligence modules
+// (docs/ARCHITECTURE.md §6), which filter by the legacy Role enum.
 //
-// TODO(auth): this is a development-only stand-in. It reads a role from an
-// unsigned cookie so the rest of the app (and this session's manual
-// testing) has something real to filter against, but it performs no
-// authentication whatsoever. Replace with NextAuth/Clerk/SSO before any
-// real deployment — nothing here should be mistaken for production auth.
+// The original dev-only cookie role switcher has been removed: the legacy
+// role is now derived from the authenticated Growth OS user (src/lib/auth).
+// Programme staff map to ADMIN, operators to BUSINESS, anyone else PUBLIC.
 
-import { cookies } from "next/headers";
 import type { Role } from "@/generated/prisma";
+import { getCurrentUser } from "@/lib/auth/session";
 
 export interface Session {
   role: Role;
-  businessId: string | null; // set only for BUSINESS role sessions
+  businessId: string | null;
   email: string | null;
 }
 
-export const DEV_ROLE_COOKIE = "dev-role";
-
 export async function getSession(): Promise<Session> {
-  const store = await cookies();
-  const roleCookie = store.get(DEV_ROLE_COOKIE)?.value;
-  const role: Role =
-    roleCookie === "ADMIN" || roleCookie === "PARTNER" || roleCookie === "BUSINESS"
-      ? roleCookie
-      : "PUBLIC";
-
-  return {
-    role,
-    businessId: role === "BUSINESS" ? "dev-business" : null,
-    email: role === "PUBLIC" ? null : `${role.toLowerCase()}@dev.local`,
-  };
+  const user = await getCurrentUser();
+  if (!user) return { role: "PUBLIC", businessId: null, email: null };
+  if (user.role === "OPERATOR") {
+    return { role: "BUSINESS", businessId: user.operatorId, email: user.email };
+  }
+  return { role: "ADMIN", businessId: null, email: user.email };
 }

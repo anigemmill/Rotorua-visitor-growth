@@ -69,7 +69,7 @@ export default async function EventsPage() {
 
       <p className="mt-6 text-sm text-black/50 dark:text-white/50">
         Run or re-run the holidays connector from{" "}
-        <Link href="/data-governance" className="underline">
+        <Link href="/destination/data-governance" className="underline">
           Data Governance
         </Link>
         .

@@ -76,14 +76,14 @@ export default async function ExecutiveOverviewPage() {
           {latestAICheck ? (
             <p className="text-sm">
               Last run {latestAICheck.runAt.toLocaleString()} against {latestAICheck.aiSystem}.{" "}
-              <Link href="/ai-visibility" className="underline">
+              <Link href="/destination/ai-visibility" className="underline">
                 View results
               </Link>
             </p>
           ) : (
             <p className="text-sm text-black/60 dark:text-white/60">
               Never run. Visit{" "}
-              <Link href="/ai-visibility" className="underline">
+              <Link href="/destination/ai-visibility" className="underline">
                 AI Discovery
               </Link>{" "}
               to test how AI systems currently describe Rotorua (requires ANTHROPIC_API_KEY).
@@ -95,7 +95,7 @@ export default async function ExecutiveOverviewPage() {
           <h2 className="font-medium mb-2">Scenario Engine</h2>
           <p className="text-sm text-black/60 dark:text-white/60">
             {scenarioQueryCount} question{scenarioQueryCount === 1 ? "" : "s"} asked so far.{" "}
-            <Link href="/scenario" className="underline">
+            <Link href="/destination/scenario" className="underline">
               Ask a question
             </Link>
           </p>

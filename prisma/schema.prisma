@@ -619,3 +619,897 @@ model ScenarioQuery {
   llmAssisted Boolean  @default(false)
   createdAt   DateTime @default(now())
 }
+
+// ===========================================================================
+// TOURISM AI GROWTH OS — operator pilot operating system
+// See docs/GROWTH_OS.md for the design rationale. Everything below supports
+// delivering the 12-week Tourism AI Growth Pilot; the destination-intelligence
+// models above are retained as the foundation for the future Rotorua Pulse.
+// ===========================================================================
+
+enum UserRole {
+  FOUNDER // programme founder — full access incl. commercial
+  ADMIN // programme administrator — full delivery access, no commercial
+  OPERATOR // participating operator — own business + cohort-shared content only
+}
+
+// Who can see a record. Enforced server-side in src/lib/authz.ts.
+enum Visibility {
+  INTERNAL // programme staff only (founder notes, assessments in draft)
+  CONFIDENTIAL // the owning operator + programme staff
+  COHORT // shared with all participating operators
+  AGGREGATE_APPROVED // approved for anonymised aggregate reporting
+  PUBLIC_APPROVED // approved for public case studies
+}
+
+enum OperatorStatus {
+  PROSPECT
+  INVITED
+  ONBOARDING
+  ACTIVE
+  PAUSED
+  COMPLETED
+  WITHDRAWN
+}
+
+enum WorkStatus {
+  TODO
+  IN_PROGRESS
+  BLOCKED
+  DONE
+  CANCELLED
+}
+
+enum Horizon {
+  NOW
+  NEXT
+  LATER
+  IGNORE
+}
+
+enum ConfidenceLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+// Distinguishes facts from claims from guesses (Module C).
+enum EvidenceKind {
+  OBSERVED // seen directly by programme staff (e.g. website review)
+  OPERATOR_REPORTED // stated by the operator, not independently verified
+  MEASURED // a recorded measurement / system export
+  THIRD_PARTY // external published source
+  HYPOTHESIS // an untested belief
+}
+
+enum SolutionType {
+  AI_ASSISTED // uses an LLM / AI tool
+  AUTOMATION // rules-based automation, no AI needed
+  PROCESS_CHANGE // better process, no new tech
+  WEBSITE_CONTENT // improve website / listing information
+  TRAINING // skills / capability
+  OTHER
+}
+
+enum OpportunityStatus {
+  IDENTIFIED
+  PRIORITISED
+  APPROVED
+  IN_PROGRESS
+  LIVE
+  MEASURING
+  CLOSED
+  REJECTED
+}
+
+enum Decision {
+  SCALE
+  AMEND
+  STOP
+  INVESTIGATE
+}
+
+enum AssessmentArea {
+  AI_SEARCH_VISIBILITY
+  MARKETING_CONTENT
+  ENQUIRIES_CONVERSION
+  BOOKING_JOURNEY
+  GUEST_COMMUNICATIONS
+  ADMIN_WORKLOAD
+  REPORTING_DECISIONS
+  OPERATIONS
+  FEEDBACK_PRODUCT
+}
+
+enum AssessmentStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  IN_REVIEW
+  COMPLETE
+}
+
+enum ExperimentStatus {
+  DESIGN
+  RUNNING
+  ANALYSING
+  COMPLETE
+  ABANDONED
+}
+
+enum ComparisonMethod {
+  BEFORE_AFTER
+  CONTROL_GROUP
+  MATCHED_COMPARISON
+  NONE
+}
+
+enum MetricKey {
+  QUALIFIED_ENQUIRIES
+  BOOKING_CONVERSION
+  BOOKING_VALUE
+  ATTRIBUTABLE_REVENUE
+  GUEST_NIGHTS
+  TIME_SAVED_HOURS
+  COST_PER_BOOKING
+  AI_SEARCH_VISIBILITY
+  REFERRAL_TRAFFIC
+  GUEST_SATISFACTION
+  TOTAL_BOOKINGS
+  OTHER
+}
+
+enum MeasurementKind {
+  BASELINE
+  RESULT
+}
+
+enum CulturalReview {
+  NOT_APPLICABLE
+  REQUIRED // must be approved by an appropriate authority before sharing
+  APPROVED
+}
+
+enum WorkflowKind {
+  CONCEPT_SPEC // strategic concept / specification only
+  PROMPT_TEMPLATE // a prompt a human runs manually
+  AUTOMATED_WORKFLOW // scripted / no-code automation
+  AGENT // a functioning agent with tools
+}
+
+enum WorkflowStatus {
+  CONCEPT
+  TESTING
+  VALIDATED
+  OPERATIONAL
+  RETIRED
+}
+
+enum DealType {
+  PARTICIPATION_FEE
+  SPONSORSHIP
+  IMPLEMENTATION
+  RECURRING_SERVICE
+  LICENSING
+  OTHER
+}
+
+// Proposed, quoted and contracted are distinct stages; received money is
+// recorded separately as Payment rows and is never inferred from a stage.
+enum DealStage {
+  OPPORTUNITY
+  PROPOSED
+  QUOTED
+  CONTRACTED
+  LOST
+}
+
+enum CostCategory {
+  DELIVERY_LABOUR
+  CONTRACTOR
+  SOFTWARE
+  TRAVEL
+  VENUE
+  OTHER
+}
+
+enum RiskKind {
+  RISK
+  BLOCKER
+  ISSUE
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  role         UserRole
+  passwordHash String
+  operatorId   String? // required for OPERATOR role
+  operator     Operator? @relation(fields: [operatorId], references: [id])
+  active       Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions      AuthSession[]
+  ownedOpps     Opportunity[] @relation("OpportunityOwner")
+  assignedTasks Task[]        @relation("TaskAssignee")
+  auditLogs     AuditLog[]
+}
+
+// Server-side session: only a SHA-256 hash of the cookie token is stored.
+model AuthSession {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+
+  @@index([userId])
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  email     String
+  success   Boolean
+  createdAt DateTime @default(now())
+
+  @@index([email, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String // "create" | "update" | "delete" | "login" | "export" ...
+  entityType String
+  entityId   String?
+  summary    String
+  changes    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// PROGRAMME (Module F) — dates derive from startDate + week numbers, so
+// moving the start date reschedules everything.
+// ---------------------------------------------------------------------------
+
+model Programme {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  startDate   DateTime
+  totalWeeks  Int      @default(12)
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages      ProgrammeStage[]
+  milestones  Milestone[]
+  operators   Operator[]
+  workshops   Workshop[]
+  initiatives SharedInitiative[]
+}
+
+model ProgrammeStage {
+  id          String    @id @default(cuid())
+  programmeId String
+  programme   Programme @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  order       Int
+  name        String
+  startWeek   Int
+  endWeek     Int
+  goals       String[]
+}
+
+model Milestone {
+  id          String     @id @default(cuid())
+  programmeId String
+  programme   Programme  @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  title       String
+  week        Int
+  status      WorkStatus @default(TODO)
+  notes       String?
+}
+
+// ---------------------------------------------------------------------------
+// OPERATORS (Module B)
+// ---------------------------------------------------------------------------
+
+model Operator {
+  id          String         @id @default(cuid())
+  programmeId String?
+  programme   Programme?     @relation(fields: [programmeId], references: [id])
+  name        String
+  category    String // "accommodation" | "activity" | "attraction" | "cultural" | "food" | "transport" | "other"
+  status      OperatorStatus @default(PROSPECT)
+  isSynthetic Boolean        @default(false) // demo data flag — never mix with real reporting
+
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  websiteUrl   String?
+  bookingUrl   String?
+
+  experiences       String?
+  targetMarkets     String[]
+  marketingChannels String[]
+  bookingProcess    String?
+  techStack         String[]
+  objectives        String?
+  challenges        String?
+  aiMaturity        Int? // 1 (none) – 5 (embedded)
+  seasonality       String?
+  groupTags         String[] // e.g. "overnight-package", "needs-booking-help"
+  internalNotes     String? // staff only
+
+  // Governance / permissions (Section 7)
+  agreedScope           String?
+  dataAgreementSignedAt DateTime?
+  consentCohortSharing  Boolean   @default(false)
+  consentAggregate      Boolean   @default(false)
+  consentCaseStudy      Boolean   @default(false)
+  dataRetentionNotes    String?
+  culturalGuidance      String? // who holds authority over cultural content; what must not go into AI tools
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users         User[]
+  assessments   Assessment[]
+  opportunities Opportunity[]
+  projects      Project[]
+  tasks         Task[]
+  experiments   Experiment[]
+  measurements  Measurement[]
+  attendance    WorkshopAttendance[]
+  initiatives   InitiativeParticipant[]
+  learnings     Learning[]
+  workflowUses  WorkflowUsage[]
+  deals         Deal[]
+  costs         CostItem[]
+  risks         Risk[]
+  decisions     DecisionRecord[]
+}
+
+// ---------------------------------------------------------------------------
+// ASSESSMENT (Module C)
+// ---------------------------------------------------------------------------
+
+model Assessment {
+  id                 String           @id @default(cuid())
+  operatorId         String
+  operator           Operator         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  status             AssessmentStatus @default(NOT_STARTED)
+  conductedBy        String?
+  conductedAt        DateTime?
+  summary            String?
+  sharedWithOperator Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  areas         AssessmentAreaScore[]
+  opportunities Opportunity[]
+}
+
+model AssessmentAreaScore {
+  id           String         @id @default(cuid())
+  assessmentId String
+  assessment   Assessment     @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  area         AssessmentArea
+  score        Int? // 1 (weak) – 5 (strong) current capability
+  observed     String? // what staff saw directly
+  reported     String? // what the operator told us
+  notes        String?
+
+  @@unique([assessmentId, area])
+}
+
+// ---------------------------------------------------------------------------
+// OPPORTUNITY & IMPLEMENTATION REGISTER (Module D)
+// ---------------------------------------------------------------------------
+
+model SolutionTemplate {
+  id                 String         @id @default(cuid())
+  name               String
+  area               AssessmentArea
+  solutionType       SolutionType
+  description        String
+  steps              String?
+  typicalEffortHours Int?
+  typicalOneOffNzd   Float?
+  typicalMonthlyNzd  Float?
+  tools              String[]
+  successMetric      String?
+  workflowAssetId    String?
+  workflowAsset      WorkflowAsset? @relation(fields: [workflowAssetId], references: [id])
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  opportunities Opportunity[]
+}
+
+model Opportunity {
+  id           String            @id @default(cuid())
+  operatorId   String? // null => shared initiative
+  operator     Operator?         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  initiativeId String?
+  initiative   SharedInitiative? @relation(fields: [initiativeId], references: [id])
+  assessmentId String?
+  assessment   Assessment?       @relation(fields: [assessmentId], references: [id])
+  templateId   String?
+  template     SolutionTemplate? @relation(fields: [templateId], references: [id])
+
+  title            String
+  area             AssessmentArea
+  solutionType     SolutionType
+  problem          String
+  currentProcess   String?
+  proposedSolution String
+  expectedValue    String?
+  expectedValueNzd Float? // annualised estimate, NZD excl. GST
+  impactScore      Int               @default(3) // 1-5
+  effortScore      Int               @default(3) // 1-5 (5 = most effort)
+  effortHours      Int?
+  oneOffCostNzd    Float?
+  monthlyCostNzd   Float?
+  dataRequirements String?
+  risks            String?
+  dependencies     String?
+  tools            String[]
+  successMetric    String?
+  baselineMetric   String?
+  targetMetric     String?
+  actualResult     String?
+  evidenceBasis    EvidenceKind      @default(HYPOTHESIS)
+  confidence       ConfidenceLevel   @default(MEDIUM)
+  horizon          Horizon           @default(NEXT)
+  status           OpportunityStatus @default(IDENTIFIED)
+  decision         Decision?
+  decisionNotes    String?
+  ownerId          String?
+  owner            User?             @relation("OpportunityOwner", fields: [ownerId], references: [id])
+  visibility       Visibility        @default(CONFIDENTIAL)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projects    Project[]
+  experiments Experiment[]
+}
+
+model Project {
+  id             String            @id @default(cuid())
+  title          String
+  description    String?
+  operatorId     String?
+  operator       Operator?         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  opportunityId  String?
+  opportunity    Opportunity?      @relation(fields: [opportunityId], references: [id])
+  initiativeId   String?
+  initiative     SharedInitiative? @relation(fields: [initiativeId], references: [id])
+  status         WorkStatus        @default(TODO)
+  startDate      DateTime?
+  dueDate        DateTime?
+  tools          String[]
+  oneOffCostNzd  Float?
+  monthlyCostNzd Float?
+  testingNotes   String?
+  approvedBy     String? // who approved go-live (human approval record)
+  approvedAt     DateTime?
+  adoption       String? // "not started" | "partial" | "embedded" free text
+  visibility     Visibility        @default(CONFIDENTIAL)
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  tasks Task[]
+}
+
+model Task {
+  id           String            @id @default(cuid())
+  title        String
+  description  String?
+  operatorId   String?
+  operator     Operator?         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  projectId    String?
+  project      Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  initiativeId String?
+  initiative   SharedInitiative? @relation(fields: [initiativeId], references: [id])
+  workshopId   String?
+  workshop     Workshop?         @relation(fields: [workshopId], references: [id])
+  assigneeId   String?
+  assignee     User?             @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  ownerLabel   String? // owner who is not a system user, e.g. "Operator: Jo"
+  dueDate      DateTime?
+  status       WorkStatus        @default(TODO)
+  priority     Horizon           @default(NOW)
+  visibility   Visibility        @default(CONFIDENTIAL)
+  completedAt  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([status, dueDate])
+}
+
+// Generic evidence attached to any record (opportunity, experiment, project…)
+model Evidence {
+  id          String       @id @default(cuid())
+  entityType  String // "opportunity" | "experiment" | "project" | "operator" | "initiative"
+  entityId    String
+  operatorId  String? // owning operator, for access control
+  kind        EvidenceKind
+  description String
+  reference   String? // URL / file location / system export name — files live in existing storage
+  recordedBy  String
+  observedAt  DateTime?
+  visibility  Visibility   @default(CONFIDENTIAL)
+  createdAt   DateTime     @default(now())
+
+  @@index([entityType, entityId])
+}
+
+// ---------------------------------------------------------------------------
+// COLLECTIVE (Module E)
+// ---------------------------------------------------------------------------
+
+model Workshop {
+  id          String     @id @default(cuid())
+  programmeId String
+  programme   Programme  @relation(fields: [programmeId], references: [id], onDelete: Cascade)
+  title       String
+  week        Int
+  date        DateTime?
+  location    String? // venue or video link
+  agenda      String?
+  notes       String?
+  status      WorkStatus @default(TODO)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  attendance WorkshopAttendance[]
+  tasks      Task[]
+  learnings  Learning[]
+}
+
+model WorkshopAttendance {
+  id         String   @id @default(cuid())
+  workshopId String
+  workshop   Workshop @relation(fields: [workshopId], references: [id], onDelete: Cascade)
+  operatorId String
+  operator   Operator @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  attended   Boolean  @default(false)
+  engagement Int? // 1-5 staff-rated engagement
+  notes      String?
+
+  @@unique([workshopId, operatorId])
+}
+
+model Learning {
+  id                 String            @id @default(cuid())
+  title              String
+  body               String
+  topic              String?
+  operatorId         String? // source operator, if any
+  operator           Operator?         @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  workshopId         String?
+  workshop           Workshop?         @relation(fields: [workshopId], references: [id], onDelete: SetNull)
+  initiativeId       String?
+  initiative         SharedInitiative? @relation(fields: [initiativeId], references: [id], onDelete: SetNull)
+  isReusableProcess  Boolean           @default(false)
+  visibility         Visibility        @default(INTERNAL)
+  culturalReview     CulturalReview    @default(NOT_APPLICABLE)
+  culturalApprovedBy String?
+  createdBy          String
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+model Resource {
+  id             String         @id @default(cuid())
+  title          String
+  description    String?
+  url            String? // link to existing storage (Drive, Notion…) — no file hosting in phase 1
+  resourceType   String // "template" | "guide" | "recording" | "slides" | "checklist"
+  visibility     Visibility     @default(COHORT)
+  culturalReview CulturalReview @default(NOT_APPLICABLE)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+}
+
+model SharedInitiative {
+  id                String     @id @default(cuid())
+  programmeId       String?
+  programme         Programme? @relation(fields: [programmeId], references: [id])
+  title             String
+  description       String
+  initiativeType    String // "overnight-package" | "co-marketing" | "shared-content" | "stay-another-night" ...
+  status            WorkStatus @default(TODO)
+  attributionMethod String? // how bookings are attributed between partners
+  results           String?
+  visibility        Visibility @default(CONFIDENTIAL) // CONFIDENTIAL here = participants + staff
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  participants  InitiativeParticipant[]
+  opportunities Opportunity[]
+  projects      Project[]
+  tasks         Task[]
+  experiments   Experiment[]
+  learnings     Learning[]
+}
+
+model InitiativeParticipant {
+  id                   String           @id @default(cuid())
+  initiativeId         String
+  initiative           SharedInitiative @relation(fields: [initiativeId], references: [id], onDelete: Cascade)
+  operatorId           String
+  operator             Operator         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  role                 String? // "accommodation partner" | "activity partner" | "lead"
+  responsibilities     String?
+  attributedBookings   Int?
+  attributedRevenueNzd Float?
+  consentConfirmed     Boolean          @default(false)
+
+  @@unique([initiativeId, operatorId])
+}
+
+// ---------------------------------------------------------------------------
+// EXPERIMENTS & MEASUREMENT (Module G)
+// ---------------------------------------------------------------------------
+
+model Experiment {
+  id                 String            @id @default(cuid())
+  title              String
+  operatorId         String?
+  operator           Operator?         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  initiativeId       String?
+  initiative         SharedInitiative? @relation(fields: [initiativeId], references: [id])
+  opportunityId      String?
+  opportunity        Opportunity?      @relation(fields: [opportunityId], references: [id])
+  isDestinationLevel Boolean           @default(false)
+
+  hypothesis             String
+  problem                String
+  audience               String?
+  intervention           String
+  startDate              DateTime?
+  endDate                DateTime?
+  baselineStart          DateTime?
+  baselineEnd            DateTime?
+  comparisonMethod       ComparisonMethod @default(BEFORE_AFTER)
+  primaryMetric          MetricKey
+  primaryMetricLabel     String?
+  secondaryMetrics       String[]
+  baselineValue          Float?
+  targetValue            Float?
+  minimumAcceptable      Float?
+  higherIsBetter         Boolean          @default(true)
+  maxCostNzd             Float?
+  actualValue            Float?
+  actualCostNzd          Float?
+  controlValue           Float? // control/matched group result, if used
+  resultSummary          String?
+  limitations            String?
+  attributionNotes       String?
+  // Destination-level outcomes, kept distinct (never collapsed into "impact")
+  incrementalVisitors    Float?
+  incrementalGuestNights Float?
+  incrementalSpendNzd    Float?
+  isIllustrative         Boolean          @default(false) // synthetic demo values
+  status                 ExperimentStatus @default(DESIGN)
+  decision               Decision?
+  nextAction             String?
+  visibility             Visibility       @default(CONFIDENTIAL)
+  createdAt              DateTime         @default(now())
+  updatedAt              DateTime         @updatedAt
+
+  measurements Measurement[]
+}
+
+model Measurement {
+  id             String          @id @default(cuid())
+  operatorId     String?
+  operator       Operator?       @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  experimentId   String?
+  experiment     Experiment?     @relation(fields: [experimentId], references: [id], onDelete: SetNull)
+  metric         MetricKey
+  label          String? // for OTHER or a more specific description
+  kind           MeasurementKind
+  value          Float
+  unit           String
+  periodStart    DateTime
+  periodEnd      DateTime
+  source         String // where the number came from, e.g. "Rezdy export", "GA4", "operator estimate"
+  evidenceKind   EvidenceKind    @default(OPERATOR_REPORTED)
+  isIllustrative Boolean         @default(false) // synthetic / demo value — labelled everywhere
+  notes          String?
+  recordedBy     String
+  createdAt      DateTime        @default(now())
+
+  @@index([operatorId, metric])
+}
+
+// ---------------------------------------------------------------------------
+// GOVERNANCE OF THE PROGRAMME: risks + decisions (Modules A/H)
+// ---------------------------------------------------------------------------
+
+model Risk {
+  id         String     @id @default(cuid())
+  kind       RiskKind   @default(RISK)
+  title      String
+  detail     String?
+  severity   Severity   @default(MEDIUM)
+  operatorId String?
+  operator   Operator?  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  owner      String?
+  mitigation String?
+  status     WorkStatus @default(TODO)
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+// Report-style decision record: what changed / evidence / why it matters /
+// next step / owner / review date.
+model DecisionRecord {
+  id           String     @id @default(cuid())
+  title        String
+  whatChanged  String
+  evidence     String?
+  whyItMatters String?
+  nextAction   String?
+  owner        String?
+  reviewDate   DateTime?
+  operatorId   String?
+  operator     Operator?  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  decided      Boolean    @default(false)
+  outcome      String?
+  visibility   Visibility @default(INTERNAL)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// AI AGENT & WORKFLOW LIBRARY (Module I)
+// ---------------------------------------------------------------------------
+
+model WorkflowAsset {
+  id                  String         @id @default(cuid())
+  name                String
+  kind                WorkflowKind
+  status              WorkflowStatus @default(CONCEPT)
+  purpose             String
+  problem             String?
+  intendedUser        String?
+  inputs              String?
+  expectedOutput      String?
+  tools               String[]
+  permissions         String?
+  humanApproval       String? // what must a human approve before output is used
+  costNotes           String?
+  limitations         String?
+  testResults         String?
+  evidenceOfValue     String?
+  culturalReview      CulturalReview @default(NOT_APPLICABLE)
+  strategicInitiative String? // e.g. "Rotorua First Answer"
+  currentVersion      Int            @default(1)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  versions  WorkflowVersion[]
+  usages    WorkflowUsage[]
+  templates SolutionTemplate[]
+}
+
+model WorkflowVersion {
+  id           String        @id @default(cuid())
+  assetId      String
+  asset        WorkflowAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  version      Int
+  instructions String // the prompt / workflow definition / spec
+  changeNote   String?
+  createdBy    String
+  createdAt    DateTime      @default(now())
+
+  @@unique([assetId, version])
+}
+
+model WorkflowUsage {
+  id         String        @id @default(cuid())
+  assetId    String
+  asset      WorkflowAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  operatorId String
+  operator   Operator      @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  status     String        @default("piloting") // piloting | in use | stopped
+  notes      String?
+  createdAt  DateTime      @default(now())
+
+  @@unique([assetId, operatorId])
+}
+
+// ---------------------------------------------------------------------------
+// COMMERCIAL (Module J) — NZD excl. GST. Planning, not accounting.
+// ---------------------------------------------------------------------------
+
+model Deal {
+  id                String    @id @default(cuid())
+  title             String
+  organisation      String
+  operatorId        String?
+  operator          Operator? @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  type              DealType
+  stage             DealStage @default(OPPORTUNITY)
+  oneOffValueNzd    Float     @default(0)
+  monthlyValueNzd   Float     @default(0)
+  termMonths        Int       @default(0)
+  probability       Int       @default(25) // % — used for weighted forecast only
+  expectedCloseDate DateTime?
+  contractSignedAt  DateTime?
+  renewalDate       DateTime?
+  isIllustrative    Boolean   @default(false) // demo figure — labelled everywhere
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  payments Payment[]
+  costs    CostItem[]
+}
+
+model Payment {
+  id         String   @id @default(cuid())
+  dealId     String
+  deal       Deal     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  amountNzd  Float
+  receivedAt DateTime
+  reference  String?
+  createdAt  DateTime @default(now())
+}
+
+model CostItem {
+  id             String       @id @default(cuid())
+  description    String
+  category       CostCategory
+  amountNzd      Float
+  incurredAt     DateTime
+  isMonthly      Boolean      @default(false) // recurring monthly cost (e.g. software)
+  isForecast     Boolean      @default(false) // planned, not yet incurred
+  isIllustrative Boolean      @default(false)
+  dealId         String?
+  deal           Deal?        @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  operatorId     String?
+  operator       Operator?    @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+}
+
+model PricingScenario {
+  id                       String   @id @default(cuid())
+  name                     String
+  cohortSize               Int
+  feePerOperatorNzd        Float
+  sponsorshipNzd           Float    @default(0)
+  implementationAttachRate Float    @default(0) // 0-1
+  implementationAvgNzd     Float    @default(0)
+  recurringAttachRate      Float    @default(0) // 0-1
+  recurringMonthlyNzd      Float    @default(0)
+  recurringMonths          Int      @default(12)
+  deliveryHoursPerOperator Float    @default(0)
+  sharedDeliveryHours      Float    @default(0) // workshops, programme mgmt
+  hourlyCostNzd            Float    @default(0)
+  softwareMonthlyNzd       Float    @default(0)
+  programmeMonths          Int      @default(3)
+  otherFixedCostsNzd       Float    @default(0)
+  notes                    String?
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}

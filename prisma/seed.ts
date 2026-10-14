@@ -8,6 +8,7 @@
 
 import { PrismaClient } from "../src/generated/prisma";
 import { rotorua } from "../src/config/destinations/rotorua";
+import { seedGrowthOs } from "./seed-growth-os";
 
 const prisma = new PrismaClient();
 
@@ -52,6 +53,8 @@ async function main() {
     `Seeded destination "${destination.name}", ${rotorua.experienceCategories.length} experience categories, ${rotorua.trackedPrompts.length} tracked prompts.`
   );
   console.log("No observation data was seeded — see docs/ARCHITECTURE.md §1/§10 for how to add real data.");
+
+  await seedGrowthOs(prisma);
 }
 
 main()

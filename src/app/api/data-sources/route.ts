@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getActiveDestinationConfig } from "@/config/destinations";
+import { getSession } from "@/lib/session";
 
 export async function GET() {
+  // Previously unauthenticated. Destination data registry is staff-only.
+  const session = await getSession();
+  if (session.role !== "ADMIN") {
+    return NextResponse.json({ error: "Programme staff only." }, { status: 403 });
+  }
   const destinationConfig = getActiveDestinationConfig();
   const destination = await prisma.destination.findUnique({
     where: { slug: destinationConfig.slug },
