@@ -1,0 +1,151 @@
+# Continuous integration. Every job here is a required check for merging
+# to main and for production deployment (see deploy.yml).
+name: CI
+
+on:
+  pull_request:
+  push:
+    # main, plus agent working branches so their pushes are checked before a PR exists.
+    branches: [main, "claude/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  checks:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: tourism_platform_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      # Test-only values; no real secrets are used in CI.
+      DATABASE_URL: postgresql://app:app@localhost:5432/tourism_platform_test?schema=public
+      TEST_DATABASE_URL: postgresql://app:app@localhost:5432/tourism_platform_test?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      # npm ci fails if package-lock.json is out of sync with package.json.
+      - name: Install (lockfile must match package.json)
+        run: npm ci
+      - name: Generate Prisma client
+        run: npx prisma generate
+      - name: Check migrations match the schema
+        run: |
+          PGPASSWORD=app psql -h localhost -U app -d tourism_platform_test -c "CREATE DATABASE ci_shadow"
+          npx prisma migrate diff --from-migrations prisma/migrations \
+            --to-schema-datamodel prisma/schema.prisma \
+            --shadow-database-url "postgresql://app:app@localhost:5432/ci_shadow" --exit-code
+      - name: Lint
+        run: npm run lint
+      - name: Generate route types
+        run: npx next typegen
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit and integration tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+
+  e2e:
+    name: Browser smoke test
+    runs-on: ubuntu-latest
+    needs: checks
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: app
+          POSTGRES_PASSWORD: app
+          POSTGRES_DB: tourism_platform
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U app"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://app:app@localhost:5432/tourism_platform?schema=public
+      APP_URL: http://localhost:3100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy
+      - run: npm run db:seed
+      - run: npm run build
+      - name: Install Playwright
+        run: |
+          npm install --no-save playwright@1.56.1
+          npx playwright install --with-deps chromium
+      - name: Run smoke test
+        run: |
+          # Ephemeral key generated per run; never a real secret.
+          export CREDENTIAL_ENCRYPTION_KEYS="1:$(openssl rand -base64 32)"
+          PORT=3100 npm start > server.log 2>&1 &
+          npx --yes wait-on@8.0.3 --timeout 60000 http://localhost:3100
+          BASE_URL=http://localhost:3100 node tests/e2e/smoke.cjs smoke-screenshots
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-debug
+          path: |
+            server.log
+            smoke-screenshots/
+          retention-days: 7
+
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      # Policy (docs/platform/DEPENDENCY_SECURITY.md): no critical findings
+      # anywhere; no high or critical findings in production dependencies.
+      - name: No critical vulnerabilities (all dependencies)
+        run: npm audit --audit-level=critical
+      - name: No high or critical vulnerabilities (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks (full history)
+        env:
+          GITLEAKS_VERSION: 8.18.4
+          GITLEAKS_SHA256: ba6dbb656933921c775ee5a2d1c13a91046e7952e9d919f9bac4cec61d628e7d
+        run: |
+          curl -sSfL -o gitleaks.tgz "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  gitleaks.tgz" | sha256sum -c -
+          tar -xzf gitleaks.tgz gitleaks
+          ./gitleaks detect --source . --redact --verbose --exit-code 1

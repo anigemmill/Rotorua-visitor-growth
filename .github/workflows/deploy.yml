@@ -1,0 +1,52 @@
+# Production deployment gate.
+#
+# Deploys run only after CI succeeds on main. Each one targets the
+# "production" GitHub environment, which should require a manual approval
+# (Settings → Environments). The deploy step stays disabled until hosting is
+# provisioned (docs/platform/HOSTING.md) and the repository variable
+# DEPLOY_ENABLED is set to "true".
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Require green CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse to deploy unless every CI job passed
+        if: ${{ github.event.workflow_run.conclusion != 'success' }}
+        run: |
+          echo "CI concluded '${{ github.event.workflow_run.conclusion }}' — deployment blocked."
+          exit 1
+      - run: echo "CI passed for ${{ github.event.workflow_run.head_sha }}."
+
+  deploy:
+    name: Deploy to production
+    needs: gate
+    if: ${{ vars.DEPLOY_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+      # Planned AWS ap-southeast-2 steps, filled in when the account exists:
+      #   1. aws-actions/configure-aws-credentials via GitHub OIDC (no long-lived keys)
+      #   2. docker build, then push to ECR
+      #   3. prisma migrate deploy as a one-off ECS task
+      #   4. update the ECS web and worker services; wait for them to stabilise
+      - name: Deployment target not configured
+        run: |
+          echo "Hosting is not provisioned yet. See docs/platform/HOSTING.md."
+          exit 1
