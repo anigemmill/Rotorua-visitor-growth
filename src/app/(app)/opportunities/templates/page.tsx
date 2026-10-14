@@ -32,7 +32,7 @@ export default async function TemplatesPage() {
                   <fieldset className="grid gap-1.5 sm:grid-cols-2">
                     <legend className="mb-1 text-xs font-medium text-muted">Operators</legend>
                     {operators.map((o) => (
-                      <label key={o.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="operatorIds" value={o.id} className="accent-[var(--accent)]" /> {o.name}</label>
+                      <label key={o.id} className="flex items-center gap-2 text-sm"><input type="checkbox" name="operatorIds" value={o.id} className="accent-[var(--brand)]" /> {o.name}</label>
                     ))}
                   </fieldset>
                 </ActionForm>

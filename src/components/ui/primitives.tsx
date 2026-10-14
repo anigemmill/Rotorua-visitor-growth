@@ -9,11 +9,14 @@ export function cx(...classes: (string | false | null | undefined)[]) {
 
 export function PageHeader({
   title,
+  emphasis,
   description,
   eyebrow,
   actions,
 }: {
   title: string;
+  /** Optional trailing words rendered in italic with a lime marker. */
+  emphasis?: string;
   description?: ReactNode;
   eyebrow?: ReactNode;
   actions?: ReactNode;
@@ -21,11 +24,24 @@ export function PageHeader({
   return (
     <header className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div className="min-w-0">
-        {eyebrow && <div className="mb-1.5 text-xs font-medium uppercase tracking-[0.08em] text-subtle">{eyebrow}</div>}
-        <h1 className="text-[1.65rem] font-semibold leading-tight tracking-tight text-ink">{title}</h1>
-        {description && <p className="mt-1.5 max-w-3xl text-sm leading-relaxed text-muted">{description}</p>}
+        {eyebrow && (
+          <div className="eyebrow mb-3 inline-flex items-center gap-2 rounded-full bg-brand-soft px-2.5 py-1 text-ink/80 [&_a]:hover:underline">
+            <span className="h-1.5 w-1.5 rounded-full bg-brand" aria-hidden />
+            {eyebrow}
+          </div>
+        )}
+        <h1 className="font-display text-[2.15rem] leading-[1.05] text-ink sm:text-[2.6rem]">
+          {title}
+          {emphasis && (
+            <>
+              {" "}
+              <em className="mark-lime italic">{emphasis}</em>
+            </>
+          )}
+        </h1>
+        {description && <div className="mt-2.5 max-w-3xl text-sm leading-relaxed text-muted">{description}</div>}
       </div>
-      {actions && <div className="flex shrink-0 flex-wrap gap-2 no-print">{actions}</div>}
+      {actions && <div className="flex shrink-0 flex-wrap items-center gap-2 no-print">{actions}</div>}
     </header>
   );
 }
@@ -51,11 +67,11 @@ export function Card({
   padded?: boolean;
 }) {
   return (
-    <section className={cx("rounded-xl border border-line bg-surface shadow-[0_1px_0_rgba(0,0,0,0.02)]", className)}>
+    <section className={cx("rounded-2xl border border-line bg-surface", className)}>
       {(title || actions) && (
-        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-3.5">
+        <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
-            {title && <h2 className="text-sm font-semibold text-ink">{title}</h2>}
+            {title && <h2 className="text-[15px] font-semibold tracking-tight text-ink">{title}</h2>}
             {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
           </div>
           {actions && <div className="flex shrink-0 gap-2 no-print">{actions}</div>}
@@ -66,31 +82,43 @@ export function Card({
   );
 }
 
+export type StatVariant = "plain" | "orange" | "forest" | "night" | "lime";
+
 export function Stat({
   label,
   value,
   sub,
   href,
   tone,
+  variant = "plain",
 }: {
   label: string;
   value: ReactNode;
   sub?: ReactNode;
   href?: string;
   tone?: "default" | "warning" | "danger" | "success";
+  variant?: StatVariant;
 }) {
+  const surfaces: Record<StatVariant, string> = {
+    plain: "border border-line bg-surface text-ink",
+    orange: "bg-brand text-brand-ink",
+    forest: "bg-accent text-accent-ink",
+    night: "bg-night text-night-ink",
+    lime: "bg-lime text-lime-ink",
+  };
   const valueTone =
-    tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : "text-ink";
+    variant !== "plain" ? "" : tone === "danger" ? "text-danger" : tone === "warning" ? "text-warning" : tone === "success" ? "text-success" : "text-ink";
+  const subTone = variant === "plain" ? "text-subtle" : "opacity-75";
   const inner = (
     <>
-      <p className="text-xs font-medium text-muted">{label}</p>
-      <p className={cx("mt-1.5 text-2xl font-semibold tabular-nums tracking-tight", valueTone)}>{value}</p>
-      {sub && <p className="mt-1 text-xs text-subtle">{sub}</p>}
+      <p className={cx("eyebrow", variant === "plain" ? "text-muted" : "opacity-80")}>{label}</p>
+      <p className={cx("mt-3 font-mono text-[1.85rem] font-medium leading-none tracking-tight tabular-nums", valueTone)}>{value}</p>
+      {sub && <p className={cx("mt-2 text-xs", subTone)}>{sub}</p>}
     </>
   );
-  const cls = "block rounded-xl border border-line bg-surface p-4";
+  const cls = cx("block rounded-2xl p-4", surfaces[variant]);
   return href ? (
-    <Link href={href} className={cx(cls, "transition-colors hover:border-line-strong")}>
+    <Link href={href} className={cx(cls, "transition-transform hover:-translate-y-0.5")}>
       {inner}
     </Link>
   ) : (
@@ -103,11 +131,12 @@ export function StatTile({ label, value, sub }: { label: string; value: string |
   return <Stat label={label} value={value} sub={sub} />;
 }
 
-export type Tone = "neutral" | "accent" | "success" | "warning" | "danger" | "info" | "outline";
+export type Tone = "neutral" | "accent" | "brand" | "success" | "warning" | "danger" | "info" | "outline";
 
 const TONES: Record<Tone, string> = {
   neutral: "bg-surface-2 text-muted ring-1 ring-inset ring-line",
-  accent: "bg-accent-soft text-accent",
+  accent: "bg-lime text-lime-ink",
+  brand: "bg-brand-soft text-ink",
   success: "bg-success-soft text-success",
   warning: "bg-warning-soft text-warning",
   danger: "bg-danger-soft text-danger",
@@ -125,7 +154,7 @@ export function Badge({ children, tone = "neutral", title }: { children: ReactNo
   return (
     <span
       title={title}
-      className={cx("inline-flex items-center whitespace-nowrap rounded-md px-1.5 py-0.5 text-[11px] font-medium leading-4", TONES[t])}
+      className={cx("inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium leading-4", TONES[t])}
     >
       {children}
     </span>
@@ -144,7 +173,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-dashed border-line-strong bg-surface-2 px-5 py-6 text-sm">
+    <div className="rounded-2xl border border-dashed border-line-strong bg-surface-2 px-5 py-6 text-sm">
       <p className="font-medium text-ink">{title}</p>
       {children && <div className="mt-1 text-muted">{children}</div>}
       {needs && needs.length > 0 && (
@@ -179,7 +208,7 @@ export function ButtonLink({
 }: {
   href: string;
   children: ReactNode;
-  variant?: "primary" | "secondary" | "ghost";
+  variant?: "primary" | "secondary" | "ghost" | "dark";
 }) {
   return (
     <Link href={href} className={buttonClass(variant)}>
@@ -188,15 +217,16 @@ export function ButtonLink({
   );
 }
 
-export function buttonClass(variant: "primary" | "secondary" | "ghost" | "danger" = "secondary", size: "sm" | "md" = "md") {
+export function buttonClass(variant: "primary" | "secondary" | "ghost" | "danger" | "dark" = "secondary", size: "sm" | "md" = "md") {
   const base =
-    "inline-flex items-center justify-center gap-1.5 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
-  const sz = size === "sm" ? "h-7 px-2.5 text-xs" : "h-9 px-3.5 text-sm";
+    "inline-flex items-center justify-center gap-1.5 rounded-full font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50";
+  const sz = size === "sm" ? "h-7 px-3 text-xs" : "h-9 px-4 text-sm";
   const v = {
-    primary: "bg-accent text-accent-ink hover:opacity-90",
-    secondary: "border border-line-strong bg-surface text-ink hover:bg-surface-2",
+    primary: "bg-brand text-brand-ink shadow-[inset_0_-1px_0_rgba(0,0,0,0.15)] hover:brightness-95",
+    dark: "bg-night text-night-ink hover:opacity-90",
+    secondary: "border border-ink/80 bg-transparent text-ink hover:bg-ink hover:text-canvas",
     ghost: "text-muted hover:bg-surface-2 hover:text-ink",
-    danger: "border border-danger/30 bg-surface text-danger hover:bg-danger-soft",
+    danger: "border border-danger/40 bg-surface text-danger hover:bg-danger-soft",
   }[variant];
   return cx(base, sz, v);
 }
@@ -218,7 +248,7 @@ export function DefinitionList({ items }: { items: { label: string; value: React
 
 export function Tabs({ tabs, current }: { tabs: { href: string; label: string; count?: number }[]; current: string }) {
   return (
-    <nav className="mb-6 flex gap-1 overflow-x-auto border-b border-line no-print" aria-label="Sections">
+    <nav className="mb-6 flex gap-1 overflow-x-auto no-print" aria-label="Sections">
       {tabs.map((t) => {
         const active = t.href === current;
         return (
@@ -227,12 +257,12 @@ export function Tabs({ tabs, current }: { tabs: { href: string; label: string; c
             href={t.href}
             aria-current={active ? "page" : undefined}
             className={cx(
-              "-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
-              active ? "border-accent font-medium text-ink" : "border-transparent text-muted hover:text-ink"
+              "whitespace-nowrap rounded-full px-3.5 py-1.5 text-sm transition-colors",
+              active ? "bg-night font-medium text-night-ink" : "text-muted hover:bg-surface hover:text-ink"
             )}
           >
             {t.label}
-            {t.count !== undefined && <span className="ml-1.5 text-xs text-subtle">{t.count}</span>}
+            {t.count !== undefined && <span className={cx("ml-1.5 font-mono text-xs", active ? "text-lime" : "text-subtle")}>{t.count}</span>}
           </Link>
         );
       })}
@@ -247,7 +277,7 @@ export function Notice({ tone = "info", children }: { tone?: "info" | "warning" 
     danger: "border-danger/25 bg-danger-soft text-danger",
     success: "border-success/25 bg-success-soft text-success",
   }[tone];
-  return <div className={cx("rounded-lg border px-3.5 py-2.5 text-sm", cls)}>{children}</div>;
+  return <div className={cx("rounded-xl border px-4 py-3 text-sm", cls)}>{children}</div>;
 }
 
 export function Progress({ value, max, label }: { value: number; max: number; label?: string }) {
@@ -255,7 +285,7 @@ export function Progress({ value, max, label }: { value: number; max: number; la
   return (
     <div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2 ring-1 ring-inset ring-line" role="progressbar" aria-valuenow={value} aria-valuemin={0} aria-valuemax={max} aria-label={label}>
-        <div className="h-full rounded-full bg-accent" style={{ width: `${p}%` }} />
+        <div className="h-full rounded-full bg-brand" style={{ width: `${p}%` }} />
       </div>
     </div>
   );

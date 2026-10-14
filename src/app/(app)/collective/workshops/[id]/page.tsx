@@ -43,7 +43,7 @@ export default async function WorkshopPage({ params }: PageProps<"/collective/wo
                     return (
                       <tr key={o.id}>
                         <td className="font-medium">{o.name}</td>
-                        <td><input type="checkbox" name={`${o.id}.attended`} defaultChecked={a?.attended} aria-label={`${o.name} attended`} className="h-4 w-4 accent-[var(--accent)]" /></td>
+                        <td><input type="checkbox" name={`${o.id}.attended`} defaultChecked={a?.attended} aria-label={`${o.name} attended`} className="h-4 w-4 accent-[var(--brand)]" /></td>
                         <td><input type="number" min={1} max={5} name={`${o.id}.engagement`} defaultValue={a?.engagement ?? ""} aria-label={`${o.name} engagement`} className="w-16 rounded-md border border-line-strong bg-surface px-2 py-1 text-sm" /></td>
                         <td><input name={`${o.id}.notes`} defaultValue={a?.notes ?? ""} aria-label={`${o.name} notes`} className="w-full rounded-md border border-line-strong bg-surface px-2 py-1 text-sm" /></td>
                       </tr>

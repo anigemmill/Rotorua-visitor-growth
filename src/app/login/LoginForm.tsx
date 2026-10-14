@@ -7,7 +7,7 @@ import { buttonClass } from "@/components/ui/primitives";
 export function LoginForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState(login, undefined);
   const input =
-    "block w-full rounded-lg border border-line-strong bg-surface px-3 py-2.5 text-sm text-ink focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
+    "block w-full rounded-xl border border-line-strong bg-surface px-3 py-2.5 text-sm text-ink focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25";
   return (
     <form action={action} className="space-y-4">
       {next && <input type="hidden" name="next" value={next} />}

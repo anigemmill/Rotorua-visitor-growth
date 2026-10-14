@@ -30,14 +30,16 @@ export function AppShell({
 
   const sidebar = (
     <div className="flex h-full flex-col">
-      <div className="px-5 pb-4 pt-5">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-subtle">Outside In</p>
-        <p className="mt-0.5 text-sm font-semibold tracking-tight text-ink">{productLabel}</p>
+      <div className="px-5 pb-5 pt-6">
+        <p className="text-[15px] font-semibold tracking-tight text-ink">
+          Outside In<span className="text-brand">.</span>
+        </p>
+        <p className="font-display mt-0.5 text-lg italic leading-tight text-muted">{productLabel}</p>
       </div>
       <nav className="flex-1 overflow-y-auto px-3 pb-4" aria-label="Main">
         {nav.map((g, i) => (
           <div key={i} className="mb-4">
-            {g.label && <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-subtle">{g.label}</p>}
+            {g.label && <p className="eyebrow mb-1.5 px-3 text-subtle">{g.label}</p>}
             <ul className="space-y-px">
               {g.items.map((item) => {
                 const active = isActive(item.href);
@@ -48,12 +50,12 @@ export function AppShell({
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
                       className={cx(
-                        "flex items-center justify-between rounded-md px-2 py-1.5 text-[13px] transition-colors",
-                        active ? "bg-accent-soft font-medium text-accent" : "text-muted hover:bg-surface-2 hover:text-ink"
+                        "flex items-center justify-between rounded-full px-3 py-1.5 text-[13px] transition-colors",
+                        active ? "bg-night font-medium text-night-ink" : "text-muted hover:bg-surface hover:text-ink"
                       )}
                     >
                       <span>{item.label}</span>
-                      {item.badge && <span className="text-[10px] uppercase tracking-wide text-subtle">{item.badge}</span>}
+                      {item.badge && <span className={cx("rounded-full px-1.5 font-mono text-[9px] uppercase tracking-wide", active ? "bg-lime text-lime-ink" : "bg-lime/60 text-lime-ink")}>{item.badge}</span>}
                     </Link>
                   </li>
                 );
@@ -62,7 +64,7 @@ export function AppShell({
           </div>
         ))}
       </nav>
-      <div className="border-t border-line px-5 py-4">
+      <div className="m-3 rounded-2xl bg-surface px-4 py-3">
         <p className="truncate text-sm font-medium text-ink">{user.name}</p>
         <p className="truncate text-xs text-subtle">
           {user.roleLabel}
@@ -83,24 +85,24 @@ export function AppShell({
         Skip to content
       </a>
       {/* Mobile top bar */}
-      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface px-4 py-3 lg:hidden no-print">
-        <p className="text-sm font-semibold">{productLabel}</p>
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-canvas/95 px-4 py-3 backdrop-blur lg:hidden no-print">
+        <p className="text-sm font-semibold">Outside In<span className="text-brand">.</span> <span className="font-display text-base font-normal italic text-muted">{productLabel}</span></p>
         <button
           type="button"
           onClick={() => setOpen((o) => !o)}
           aria-expanded={open}
           aria-controls="mobile-nav"
-          className="rounded-md border border-line-strong px-2.5 py-1 text-sm"
+          className="rounded-full border border-ink/80 px-3 py-1 text-sm"
         >
           {open ? "Close" : "Menu"}
         </button>
       </div>
       {open && (
-        <div id="mobile-nav" className="fixed inset-0 top-[53px] z-20 bg-surface lg:hidden">
+        <div id="mobile-nav" className="fixed inset-0 top-[53px] z-20 bg-canvas lg:hidden">
           {sidebar}
         </div>
       )}
-      <aside className="sticky top-0 hidden h-screen w-60 shrink-0 border-r border-line bg-surface lg:block no-print">{sidebar}</aside>
+      <aside className="sticky top-0 hidden h-screen w-64 shrink-0 border-r border-line bg-canvas lg:block no-print">{sidebar}</aside>
       <main id="main" className="min-w-0 flex-1 px-4 py-6 sm:px-6 lg:px-10 lg:py-9">
         <div className="mx-auto max-w-6xl">{children}</div>
       </main>

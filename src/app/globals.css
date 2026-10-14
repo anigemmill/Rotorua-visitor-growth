@@ -1,53 +1,71 @@
 @import "tailwindcss";
 
 /* Outside In · Tourism AI Growth OS design tokens.
-   Restrained warm-neutral base, one accent (deep geothermal teal),
-   semantic status colours. Swap tokens here to white-label. */
+   Warm cream canvas, near-black ink, vivid orange for action, lime for
+   highlight, forest green for links/positive states. Orange is a fill
+   colour only (dark text on it) — it fails contrast as text on cream.
+   Swap tokens here to white-label. */
 :root {
-  --canvas: #f6f5f2;
+  --canvas: #f3efe6;
   --surface: #ffffff;
-  --surface-2: #fafaf8;
-  --ink: #15171c;
-  --muted: #555b67;
-  --subtle: #858b96;
-  --line: #e3e1dc;
-  --line-strong: #cfccc5;
-  --accent: #0d5c57;
+  --surface-2: #f8f5ef;
+  --ink: #161616;
+  --muted: #55524c;
+  --subtle: #8a857c;
+  --line: #e5dfd4;
+  --line-strong: #d3ccbf;
+  --accent: #2d5a43;          /* forest — links, active text, positive */
   --accent-ink: #ffffff;
-  --accent-soft: #e2efec;
-  --success: #1d7348;
-  --success-soft: #e3f2e9;
-  --warning: #955700;
-  --warning-soft: #fbf0dc;
-  --danger: #b0281c;
-  --danger-soft: #fbe6e3;
-  --info: #2a539c;
-  --info-soft: #e5ecf8;
-  --focus: #0d5c57;
+  --accent-soft: #e3ece5;
+  --brand: #ff5a1f;           /* orange — primary buttons, highlights */
+  --brand-ink: #161616;
+  --brand-soft: #ffe1d3;
+  --lime: #dcf26b;
+  --lime-ink: #161616;
+  --night: #17181a;           /* dark feature cards */
+  --night-ink: #f3efe6;
+  --night-line: #2c2d30;
+  --success: #2d6a46;
+  --success-soft: #e2efe5;
+  --warning: #9a5a00;
+  --warning-soft: #fcefd6;
+  --danger: #b42318;
+  --danger-soft: #fde4e1;
+  --info: #2c5394;
+  --info-soft: #e4ebf7;
+  --focus: #ff5a1f;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --canvas: #111214;
-    --surface: #18191c;
-    --surface-2: #1d1f22;
-    --ink: #ecebe8;
-    --muted: #a5a9b1;
-    --subtle: #7d828b;
-    --line: #2b2d31;
-    --line-strong: #3a3d42;
-    --accent: #5cc0b5;
-    --accent-ink: #0b1514;
-    --accent-soft: #15302d;
-    --success: #6fcf97;
-    --success-soft: #16291f;
-    --warning: #f2b95c;
-    --warning-soft: #30250f;
-    --danger: #f08b80;
-    --danger-soft: #331816;
-    --info: #8db0f0;
+    --canvas: #121212;
+    --surface: #1a1a1a;
+    --surface-2: #202020;
+    --ink: #f1ede4;
+    --muted: #b0aba1;
+    --subtle: #827d74;
+    --line: #2c2b29;
+    --line-strong: #3b3a37;
+    --accent: #8fd1a8;
+    --accent-ink: #0f1a14;
+    --accent-soft: #1b2e23;
+    --brand: #ff6a33;
+    --brand-ink: #161616;
+    --brand-soft: #3a1f14;
+    --lime: #dcf26b;
+    --lime-ink: #161616;
+    --night: #0b0b0c;
+    --night-ink: #f1ede4;
+    --night-line: #26272a;
+    --success: #7fcf9b;
+    --success-soft: #16291e;
+    --warning: #f2bb5e;
+    --warning-soft: #30240f;
+    --danger: #f28b80;
+    --danger-soft: #331715;
+    --info: #94b4f0;
     --info-soft: #172238;
-    --focus: #5cc0b5;
+    --focus: #ff6a33;
   }
 }
 
@@ -71,6 +89,15 @@
   --color-danger-soft: var(--danger-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-brand: var(--brand);
+  --color-brand-ink: var(--brand-ink);
+  --color-brand-soft: var(--brand-soft);
+  --color-lime: var(--lime);
+  --color-lime-ink: var(--lime-ink);
+  --color-night: var(--night);
+  --color-night-ink: var(--night-ink);
+  --color-night-line: var(--night-line);
+  --font-display: var(--font-display-serif);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -79,7 +106,26 @@ body {
   background: var(--canvas);
   color: var(--ink);
   font-family: var(--font-geist-sans), system-ui, sans-serif;
-  font-feature-settings: "ss01", "tnum";
+  font-feature-settings: "ss01";
+}
+
+.font-display {
+  font-family: var(--font-display-serif), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Lime marker under an emphasised word, as in the brand references. */
+.mark-lime {
+  background-image: linear-gradient(transparent 62%, var(--lime) 62%, var(--lime) 92%, transparent 92%);
+  padding: 0 0.08em;
+}
+
+.eyebrow {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 :focus-visible {

@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { cx } from "./primitives";
 
 const inputCls =
-  "block w-full rounded-lg border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-subtle shadow-[inset_0_1px_0_rgba(0,0,0,0.02)] focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20 disabled:opacity-60";
+  "block w-full rounded-xl border border-line-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-subtle focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 disabled:opacity-60";
 
 interface BaseProps {
   name: string;
@@ -137,7 +137,7 @@ export function Checkbox({
         name={name}
         type="checkbox"
         defaultChecked={defaultChecked}
-        className="mt-0.5 h-4 w-4 rounded border-line-strong accent-[var(--accent)]"
+        className="mt-0.5 h-4 w-4 rounded border-line-strong accent-[var(--brand)]"
       />
       <div>
         <label htmlFor={`f-${name}`} className="text-sm text-ink">

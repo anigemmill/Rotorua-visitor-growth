@@ -1,6 +1,6 @@
 import Link from "next/link";
 import {
-  Badge, ButtonLink, Card, EmptyState, HorizonBadge, IllustrativeBadge, Notice, PageHeader, Progress, SeverityBadge, Stat, Table,
+  Badge, ButtonLink, Card, EmptyState, HorizonBadge, IllustrativeBadge, Notice, PageHeader, SeverityBadge, Stat, Table,
 } from "@/components/ui";
 import { requireStaff } from "@/lib/auth/session";
 import { prisma } from "@/lib/prisma";
@@ -73,7 +73,8 @@ export default async function DashboardPage() {
     <div>
       <PageHeader
         eyebrow={programme?.name ?? "No active programme"}
-        title={`Kia ora, ${user.name.split(" ")[0]}`}
+        title="Kia ora,"
+        emphasis={user.name.split(" ")[0]}
         description={attention ? `${attention} item${attention === 1 ? "" : "s"} need your attention this week.` : "Nothing urgent. Review what's next below."}
         actions={<ButtonLink href="/reports/founder">Programme report</ButtonLink>}
       />
@@ -87,35 +88,39 @@ export default async function DashboardPage() {
       )}
 
       {programme && (
-        <Card className="mb-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <section className="mb-6 rounded-2xl bg-night p-6 text-night-ink">
+          <div className="flex flex-col gap-5 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-medium text-muted">{programmePhaseLabel(week, programme.totalWeeks)}</p>
-              <p className="mt-0.5 text-lg font-semibold tracking-tight">{stage?.name ?? (week === 0 ? `Starts ${formatDate(programme.startDate)}` : "Complete")}</p>
-              {stage && <p className="text-xs text-subtle">Weeks {stage.startWeek}–{stage.endWeek} · {stage.goals.slice(0, 3).join(" · ")}</p>}
+              <p className="eyebrow inline-flex items-center gap-2 rounded-full bg-lime px-2.5 py-1 text-lime-ink">{programmePhaseLabel(week, programme.totalWeeks)}</p>
+              <p className="font-display mt-3 text-4xl leading-none">{stage?.name ?? (week === 0 ? `Starts ${formatDate(programme.startDate)}` : "Complete")}</p>
+              {stage && <p className="mt-2 text-xs text-night-ink/60">Weeks {stage.startWeek}–{stage.endWeek} · {stage.goals.slice(0, 3).join(" · ")}</p>}
             </div>
-            <div className="w-full md:w-80">
-              <Progress value={Math.min(week, programme.totalWeeks)} max={programme.totalWeeks} label="Programme progress" />
-              <div className="mt-2 flex justify-between text-[11px] text-subtle">
-                {programme.stages.map((s) => <span key={s.id} className={s.id === stage?.id ? "font-medium text-accent" : ""}>{s.name.split(" ")[0]}</span>)}
+            <div className="w-full md:w-96">
+              <div className="flex h-16 items-end gap-1.5" aria-label={`Week ${week} of ${programme.totalWeeks}`} role="img">
+                {Array.from({ length: programme.totalWeeks }, (_, i) => i + 1).map((w) => (
+                  <div key={w} className={`flex-1 rounded-t-md ${w === week ? "bg-lime" : w < week ? "bg-night-ink/35" : "bg-night-ink/10"}`} style={{ height: `${30 + (w / programme.totalWeeks) * 70}%` }} />
+                ))}
+              </div>
+              <div className="mt-2 flex justify-between font-mono text-[10px] uppercase tracking-wider text-night-ink/50">
+                {programme.stages.map((s) => <span key={s.id} className={s.id === stage?.id ? "text-lime" : ""}>{s.name.split(" ")[0]}</span>)}
               </div>
             </div>
           </div>
           {(upcomingMilestones.length > 0 || overdueMilestones.length > 0) && (
-            <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 border-t border-line pt-3 text-sm">
-              {overdueMilestones.map((m) => <span key={m.id}><Badge tone="danger">Overdue</Badge> <span className="ml-1">{m.title}</span> <span className="text-xs text-subtle">wk {m.week}</span></span>)}
-              {upcomingMilestones.map((m) => <span key={m.id}><Badge tone="outline">Wk {m.week}</Badge> <span className="ml-1">{m.title}</span> <span className="text-xs text-subtle">{formatShortDate(weekStart(programme.startDate, m.week))}</span></span>)}
+            <div className="mt-5 flex flex-wrap gap-x-6 gap-y-2 border-t border-night-line pt-4 text-sm">
+              {overdueMilestones.map((m) => <span key={m.id}><span className="rounded-full bg-brand px-2 py-0.5 text-[11px] font-medium text-brand-ink">Overdue</span> <span className="ml-1">{m.title}</span> <span className="font-mono text-xs text-night-ink/50">wk {m.week}</span></span>)}
+              {upcomingMilestones.map((m) => <span key={m.id}><span className="rounded-full border border-night-line px-2 py-0.5 font-mono text-[11px]">Wk {m.week}</span> <span className="ml-1">{m.title}</span> <span className="font-mono text-xs text-night-ink/50">{formatShortDate(weekStart(programme.startDate, m.week))}</span></span>)}
             </div>
           )}
-        </Card>
+        </section>
       )}
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <Stat label="Participating operators" value={active.length} sub={`${operators.length - active.length} invited / other`} href="/operators" />
+        <Stat label="Participating operators" value={active.length} sub={`${operators.length - active.length} invited / other`} href="/operators" variant="orange" />
         <Stat label="Assessments complete" value={`${assessed}/${operators.length}`} href="/assessments" tone={assessed < operators.length && week > 2 ? "warning" : "default"} />
         <Stat label="Overdue tasks" value={overdueTasks.length} sub={`${blockedTasks} blocked`} href="/work?view=overdue" tone={overdueTasks.length ? "danger" : "default"} />
         <Stat label="Projects in progress" value={projectsActive} href="/work" />
-        <Stat label="Experiments running" value={running.length} sub={`${experiments.length} total`} href="/experiments" />
+        <Stat label="Experiments running" value={running.length} sub={`${experiments.length} total`} href="/experiments" variant="forest" />
         <Stat label="Briefs awaiting review" value={draftBriefs} tone={draftBriefs ? "warning" : "default"} />
       </div>
 
@@ -153,9 +158,9 @@ export default async function DashboardPage() {
           <Card title="Opportunities by horizon" actions={<ButtonLink href="/opportunities">Register</ButtonLink>}>
             <div className="mb-4 grid grid-cols-4 gap-2">
               {horizonCounts.map(({ h, n }) => (
-                <Link key={h} href={`/opportunities?horizon=${h}`} className="rounded-lg border border-line p-3 hover:border-line-strong">
+                <Link key={h} href={`/opportunities?horizon=${h}`} className="rounded-xl border border-line p-3 hover:border-line-strong">
                   <HorizonBadge h={h} />
-                  <p className="mt-1 text-xl font-semibold tabular-nums">{n}</p>
+                  <p className="mt-2 font-mono text-2xl tabular-nums">{n}</p>
                 </Link>
               ))}
             </div>

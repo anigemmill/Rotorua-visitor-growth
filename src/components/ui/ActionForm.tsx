@@ -39,7 +39,7 @@ export function ActionForm({
     <form
       ref={ref}
       action={formAction}
-      className={cx(inline ? "flex flex-wrap items-end gap-2" : "space-y-5", className)}
+      className={cx(inline ? "flex flex-nowrap items-center gap-1.5" : "space-y-5", className)}
       onSubmit={(e) => {
         // Submit manually so React does not auto-reset the form: when the
         // server rejects input, the user's entries must stay in place.

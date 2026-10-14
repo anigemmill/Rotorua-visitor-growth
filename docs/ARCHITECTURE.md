@@ -1,3 +1,5 @@
+> **Note (Oct 2026):** this document describes the destination-intelligence layer (now under `/destination`, staff-only, strategic priority NEXT). The operator pilot platform — Tourism AI Growth OS — is documented in [`GROWTH_OS.md`](GROWTH_OS.md). The dev role switcher described in §6 has been replaced by real authentication.
+
 # Rotorua Visitor Growth & Flow Intelligence — Architecture
 
 This document is written before the bulk of the code, per the project brief's
