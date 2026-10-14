@@ -982,6 +982,9 @@ model Operator {
   costs         CostItem[]
   risks         Risk[]
   decisions     DecisionRecord[]
+  signals       Signal[]
+  integrations  IntegrationConnection[]
+  briefs        GrowthBrief[]
 }
 
 // ---------------------------------------------------------------------------
@@ -1088,6 +1091,7 @@ model Opportunity {
 
   projects    Project[]
   experiments Experiment[]
+  signals     Signal[]
 }
 
 model Project {
@@ -1118,27 +1122,29 @@ model Project {
 }
 
 model Task {
-  id           String            @id @default(cuid())
-  title        String
-  description  String?
-  operatorId   String?
-  operator     Operator?         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
-  projectId    String?
-  project      Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  initiativeId String?
-  initiative   SharedInitiative? @relation(fields: [initiativeId], references: [id])
-  workshopId   String?
-  workshop     Workshop?         @relation(fields: [workshopId], references: [id])
-  assigneeId   String?
-  assignee     User?             @relation("TaskAssignee", fields: [assigneeId], references: [id])
-  ownerLabel   String? // owner who is not a system user, e.g. "Operator: Jo"
-  dueDate      DateTime?
-  status       WorkStatus        @default(TODO)
-  priority     Horizon           @default(NOW)
-  visibility   Visibility        @default(CONFIDENTIAL)
-  completedAt  DateTime?
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
+  id               String            @id @default(cuid())
+  title            String
+  description      String?
+  operatorId       String?
+  operator         Operator?         @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  projectId        String?
+  project          Project?          @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  initiativeId     String?
+  initiative       SharedInitiative? @relation(fields: [initiativeId], references: [id])
+  workshopId       String?
+  workshop         Workshop?         @relation(fields: [workshopId], references: [id])
+  assigneeId       String?
+  assignee         User?             @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  ownerLabel       String? // owner who is not a system user, e.g. "Operator: Jo"
+  dueDate          DateTime?
+  status           WorkStatus        @default(TODO)
+  priority         Horizon           @default(NOW)
+  visibility       Visibility        @default(CONFIDENTIAL)
+  completedAt      DateTime?
+  aiAssisted       Boolean           @default(false) // AI drafts/executes part of this task
+  requiresApproval Boolean           @default(false) // a named human must approve before it goes live
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   @@index([status, dueDate])
 }
@@ -1309,6 +1315,8 @@ model Experiment {
   incrementalSpendNzd    Float?
   isIllustrative         Boolean          @default(false) // synthetic demo values
   status                 ExperimentStatus @default(DESIGN)
+  supersedesId           String? // a re-run must say what is different from the earlier experiment
+  changeFromPrevious     String?
   decision               Decision?
   nextAction             String?
   visibility             Visibility       @default(CONFIDENTIAL)
@@ -1512,4 +1520,92 @@ model PricingScenario {
   notes                    String?
   createdAt                DateTime @default(now())
   updatedAt                DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// OPERATOR GROWTH INTELLIGENCE — absorbed from the Tourism Growth
+// Intelligence prototype (anigemmill/tourism-growth-agent). Signals are the
+// atomic unit of evidence; briefs are persisted, human-approved snapshots
+// built only from stored data.
+// ---------------------------------------------------------------------------
+
+enum ClaimType {
+  FACT
+  OBSERVATION
+  INFERENCE
+  HYPOTHESIS
+  RECOMMENDATION
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  NOT_CONNECTED
+  MANUAL_IMPORT
+  REQUIRES_API
+  REQUIRES_USER_AUTH
+}
+
+enum BriefStatus {
+  DRAFT
+  APPROVED
+  SHARED // visible to the operator in their portal
+}
+
+model Signal {
+  id                  String          @id @default(cuid())
+  operatorId          String
+  operator            Operator        @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  type                String // DEMAND | REVIEW | ENQUIRY | AI_DISCOVERY | COMPETITOR | MARKET | OPERATIONS
+  title               String
+  summary             String
+  claimType           ClaimType
+  source              String // human-readable source; "Operator" when submitted via the portal
+  sourceTimestamp     DateTime
+  evidence            String?
+  confidence          ConfidenceLevel @default(MEDIUM)
+  momentum            String? // DECLINING | STABLE | RISING
+  commercialPotential String? // LOW | MEDIUM | HIGH
+  submittedByOperator Boolean         @default(false)
+  isIllustrative      Boolean         @default(false)
+  visibility          Visibility      @default(CONFIDENTIAL)
+  createdBy           String
+  createdAt           DateTime        @default(now())
+
+  opportunities Opportunity[]
+
+  @@index([operatorId, createdAt])
+}
+
+model IntegrationConnection {
+  id           String            @id @default(cuid())
+  operatorId   String
+  operator     Operator          @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  sourceKey    String // src/lib/integrations/registry.ts key
+  status       IntegrationStatus
+  notes        String? // non-secret notes only — never store tokens here
+  lastSyncedAt DateTime?
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([operatorId, sourceKey])
+}
+
+model GrowthBrief {
+  id           String      @id @default(cuid())
+  operatorId   String
+  operator     Operator    @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  weekOf       DateTime
+  whatChanged  Json // [{ text, claimType, source, signalId? }]
+  whyItMatters String?
+  actions      Json // [{ action, why, owner, effort, measure, needsApproval }]
+  learnings    String? // LEARN: what last period's actions showed (or could not show)
+  dataGaps     String[]
+  generatedBy  String // "rules" | "rules+llm"
+  status       BriefStatus @default(DRAFT)
+  approvedBy   String?
+  approvedAt   DateTime?
+  createdBy    String
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@index([operatorId, weekOf])
 }

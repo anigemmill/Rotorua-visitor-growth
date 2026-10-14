@@ -79,19 +79,19 @@ export async function seedGrowthOs(prisma: PrismaClient) {
     const assets = [
       {
         name: "Tourism Growth Intelligence",
-        kind: "CONCEPT_SPEC" as const,
-        status: "CONCEPT" as const,
+        kind: "AUTOMATED_WORKFLOW" as const,
+        status: "TESTING" as const,
         strategicInitiative: "Anchor intelligence — operator level",
-        purpose: "A reusable, business-level growth adviser for individual operators: what's happening, why it matters, where the opportunity is, what to do, and whether it worked.",
+        purpose: "A reusable, business-level growth adviser for individual operators: what changed, why it matters, what to do this week, and whether it worked (Scan → Brief → Learn).",
         problem: "Operators lack time and analytical capacity to turn their own signals (bookings, reviews, search, enquiries) into weekly decisions.",
         intendedUser: "Operator owner / manager, with Outside In as adviser",
-        inputs: "Operator profile, booking/enquiry exports, reviews, website analytics, AI-discovery checks (each only with operator authorisation).",
-        expectedOutput: "Weekly prioritised actions with evidence and confidence; experiment tracking; learning log.",
-        tools: ["Claude API (optional)", "Manual data import"],
-        humanApproval: "All recommendations reviewed by Outside In before being shared; operator approves any action that publishes content or spends money.",
-        limitations: "A separate prototype codebase exists (anigemmill/tourism-growth-agent, SQLite, single demo business). It has NOT been integrated with this platform or validated with pilot operators. No live integrations are connected.",
-        testResults: null,
-        instructions: "Specification: see tourism-growth-agent/ARCHITECTURE.md. Not yet adapted into a prompt or workflow for the pilot.",
+        inputs: "Signals recorded per operator (claim-typed), opportunities, tasks, experiments and baselines stored in this platform. Source data is obtained by manual export in the pilot.",
+        expectedOutput: "Weekly Growth Brief: max 3 actions with owner, effort and measure; learnings from completed experiments; explicit data gaps.",
+        tools: ["This platform: Operator → Growth Intelligence", "Integrations registry (manual-import defaults)"],
+        humanApproval: "Every brief is generated as a DRAFT and must be reviewed and approved by programme staff before it is shared to the operator portal.",
+        limitations: "Absorbed from the separate prototype (anigemmill/tourism-growth-agent) into this platform as rules-based signal capture + brief generation. No LLM drafting is enabled and no live data connectors exist. Tested internally on synthetic data only — not yet validated with a pilot operator.",
+        testResults: "Unit-tested brief builder (src/lib/domain/brief.test.ts) on synthetic inputs.",
+        instructions: "Rules: (1) SCAN — list signals from the last 14 days, newest first, with claim type and source. (2) BRIEF — overdue/blocked tasks first, then highest-priority NOW opportunities, max 3. (3) LEARN — summarise completed/analysing experiments and their decisions. (4) State data gaps instead of filling them. Implementation: src/lib/domain/brief.ts.",
       },
       {
         name: "Rotorua Visitor Growth & Flow",
@@ -490,9 +490,21 @@ async function seedDemoCohort(
   await mm(opId(9), "GUEST_NIGHTS", "BASELINE", 2210, "nights/month", 1);
   void e1;
 
+  // Growth Intelligence signals (illustrative)
+  const sig = (operatorId: string, d: number, data: Record<string, unknown>) =>
+    prisma.signal.create({ data: { operatorId, sourceTimestamp: new Date(now - d * DAY), isIllustrative: true, createdBy: "seed", ...data } as never });
+  await sig(opId(0), 3, { type: "ENQUIRY", title: "Six enquiries this week asked about bike storage", summary: "Guests ask whether bikes can be stored securely overnight.", claimType: "OBSERVATION", source: "Operator inbox sample", confidence: "MEDIUM", momentum: "RISING", commercialPotential: "MEDIUM" });
+  await sig(opId(0), 5, { type: "REVIEW", title: "Two reviews mention slow email replies", summary: "Recent reviews reference waiting for answers before booking.", claimType: "FACT", source: "Google reviews (staff sample)", confidence: "HIGH" });
+  await sig(opId(0), 6, { type: "DEMAND", title: "Sunday nights remain the weakest night", summary: "Operator reports Sunday occupancy well below Fri/Sat.", claimType: "OBSERVATION", source: "Operator (Little Hotelier summary)", confidence: "MEDIUM", submittedByOperator: true });
+  await sig(opId(0), 6, { type: "MARKET", title: "Bike visitors may extend if a guided ride is bundled", summary: "Untested belief behind the Ride & Rest package.", claimType: "HYPOTHESIS", source: "Workshop 3 discussion", confidence: "LOW" });
+  await sig(opId(1), 4, { type: "AI_DISCOVERY", title: "AI assistants recommend a competitor for guided MTB", summary: "3 of 4 assistants named another operator first.", claimType: "FACT", source: "AI answer accuracy check (manual)", confidence: "MEDIUM" });
+  await sig(opId(2), 8, { type: "AI_DISCOVERY", title: "Hours now correct in 3 of 4 assistants", summary: "After listing corrections.", claimType: "FACT", source: "AI answer accuracy check (manual)", confidence: "MEDIUM" });
+
   // Workflow usage
   const check = await prisma.workflowAsset.findFirst({ where: { name: { startsWith: "AI answer accuracy" } } });
   if (check) for (const n of [1, 2]) await prisma.workflowUsage.create({ data: { assetId: check.id, operatorId: opId(n), status: "piloting" } });
+  const tgi = await prisma.workflowAsset.findFirst({ where: { name: "Tourism Growth Intelligence" } });
+  if (tgi) await prisma.workflowUsage.create({ data: { assetId: tgi.id, operatorId: opId(0), status: "piloting", notes: "Weekly brief trial (synthetic)." } });
 
   // Risks & decisions
   await prisma.risk.createMany({

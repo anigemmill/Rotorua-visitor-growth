@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import {
   ActionForm, AssessmentStatusBadge, Badge, ButtonLink, Card, Checkbox, DefinitionList, EmptyState, ExperimentStatusBadge,
   FormGrid, HorizonBadge, IllustrativeBadge, Notice, OperatorStatusBadge, OppStatusBadge, PageHeader, Stat, SyntheticBadge,
-  Table, TextArea, TextField, WorkStatusBadge,
+  Table, Tabs, TextArea, TextField, WorkStatusBadge,
 } from "@/components/ui";
 import { TaskList } from "@/components/TaskList";
 import { TaskQuickAdd } from "@/components/TaskQuickAdd";
@@ -68,6 +68,8 @@ export default async function OperatorPage({ params }: PageProps<"/operators/[id
           </>
         }
       />
+
+      <Tabs current={`/operators/${op.id}`} tabs={[{ href: `/operators/${op.id}`, label: "Workspace" }, { href: `/operators/${op.id}/intelligence`, label: "Growth Intelligence" }]} />
 
       {op.culturalGuidance && (
         <div className="mb-6">
