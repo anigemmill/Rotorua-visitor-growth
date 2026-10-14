@@ -8,7 +8,9 @@ export const metadata: Metadata = { title: "Sign in" };
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
   const user = await getCurrentUser();
   if (user) redirect(user.role === "OPERATOR" ? "/portal" : "/");
-  const next = (await searchParams).next;
+  const sp = await searchParams;
+  const next = sp.next;
+  const setupDone = sp.setup === "done";
 
   return (
     <main className="grid min-h-screen lg:grid-cols-[1.1fr_1fr]">
@@ -44,6 +46,7 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
             Welcome <em className="mark-lime italic">back</em>
           </h2>
           <p className="mt-1 text-sm text-muted">Sign in to Tourism AI Growth OS.</p>
+          {setupDone && <p className="mt-6 rounded-xl border border-success/25 bg-success-soft px-4 py-3 text-sm text-success">Setup complete. Sign in with your new founder account, then remove SETUP_TOKEN from Vercel.</p>}
           <div className="mt-8 rounded-2xl border border-line bg-surface p-6">
             <LoginForm next={typeof next === "string" ? next : undefined} />
           </div>

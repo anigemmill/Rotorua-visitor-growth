@@ -1,18 +1,20 @@
 {
-  "name": "rotorua-visitor-intelligence",
+  "name": "tourism-ai-growth-os",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
     "db:seed": "tsx prisma/seed.ts",
     "connectors:run": "tsx scripts/run-connectors.ts",
     "test": "tsx --test \"src/**/*.test.ts\"",
-    "test:integration": "node -e \"if(!process.env.TEST_DATABASE_URL){console.error('Set TEST_DATABASE_URL');process.exit(1)}\" && DATABASE_URL=$TEST_DATABASE_URL prisma migrate deploy && DATABASE_URL=$TEST_DATABASE_URL tsx --test \"tests/integration/**/*.test.ts\"",
+    "test:integration": "node -e \"if(!process.env.TEST_DATABASE_URL){console.error('Set TEST_DATABASE_URL');process.exit(1)}\" && DATABASE_URL=$TEST_DATABASE_URL DIRECT_URL=$TEST_DATABASE_URL prisma migrate deploy && DATABASE_URL=$TEST_DATABASE_URL DIRECT_URL=$TEST_DATABASE_URL tsx --test \"tests/integration/**/*.test.ts\"",
     "typecheck": "next typegen && tsc --noEmit",
-    "db:migrate": "prisma migrate deploy"
+    "db:migrate": "prisma migrate deploy",
+    "vercel-build": "node scripts/vercel-build.mjs",
+    "postinstall": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -38,5 +40,8 @@
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5"
+  },
+  "engines": {
+    "node": ">=20.9"
   }
 }

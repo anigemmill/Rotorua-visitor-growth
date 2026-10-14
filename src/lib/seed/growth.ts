@@ -10,9 +10,9 @@
 //    and labelled in the UI. None of it describes a real business.
 
 import { randomBytes } from "node:crypto";
-import type { PrismaClient } from "../src/generated/prisma";
-import { hashPassword } from "../src/lib/auth/password";
-import { DEFAULT_STAGES } from "../src/lib/domain/programme";
+import type { PrismaClient } from "../../generated/prisma";
+import { hashPassword } from "../auth/password";
+import { DEFAULT_STAGES } from "../domain/programme";
 
 const DAY = 86_400_000;
 
@@ -20,34 +20,52 @@ function genPassword() {
   return randomBytes(12).toString("base64url");
 }
 
-export async function seedGrowthOs(prisma: PrismaClient) {
-  const demo = process.env.SEED_DEMO === "true";
+export interface SeedOptions {
+  founder?: { email: string; name?: string; password?: string };
+  programmeStart?: Date;
+  demo?: boolean;
+  demoPassword?: string;
+  quiet?: boolean;
+}
+
+/** Options from SEED_* environment variables (used by `npm run db:seed`). */
+export function seedOptionsFromEnv(env: NodeJS.ProcessEnv = process.env): SeedOptions {
+  return {
+    founder: env.SEED_FOUNDER_EMAIL ? { email: env.SEED_FOUNDER_EMAIL, name: env.SEED_FOUNDER_NAME, password: env.SEED_FOUNDER_PASSWORD } : undefined,
+    programmeStart: env.SEED_PROGRAMME_START ? new Date(env.SEED_PROGRAMME_START) : undefined,
+    demo: env.SEED_DEMO === "true",
+    demoPassword: env.SEED_DEMO_PASSWORD || undefined,
+  };
+}
+
+export async function seedGrowthOs(prisma: PrismaClient, opts: SeedOptions = seedOptionsFromEnv()) {
+  const demo = !!opts.demo;
   const credentials: string[] = [];
 
   // ---- Founder -----------------------------------------------------------
-  const founderEmail = (process.env.SEED_FOUNDER_EMAIL ?? "").trim().toLowerCase();
+  const founderEmail = (opts.founder?.email ?? "").trim().toLowerCase();
   let founderId: string | null = null;
   if (founderEmail) {
     const existing = await prisma.user.findUnique({ where: { email: founderEmail } });
     if (existing) {
       founderId = existing.id;
     } else {
-      const pw = process.env.SEED_FOUNDER_PASSWORD || genPassword();
+      const pw = opts.founder?.password || genPassword();
       const u = await prisma.user.create({
-        data: { email: founderEmail, name: process.env.SEED_FOUNDER_NAME || "Founder", role: "FOUNDER", passwordHash: await hashPassword(pw) },
+        data: { email: founderEmail, name: opts.founder?.name || "Founder", role: "FOUNDER", passwordHash: await hashPassword(pw) },
       });
       founderId = u.id;
-      credentials.push(`FOUNDER  ${founderEmail}  ${process.env.SEED_FOUNDER_PASSWORD ? "(password from SEED_FOUNDER_PASSWORD)" : pw}`);
+      credentials.push(`FOUNDER  ${founderEmail}  ${opts.founder?.password ? "(password as supplied)" : pw}`);
     }
   } else {
-    console.warn("SEED_FOUNDER_EMAIL not set — no founder account created. Set it and re-run the seed.");
+    if (!opts.quiet) console.warn("SEED_FOUNDER_EMAIL not set — no founder account created. Set it and re-run the seed.");
   }
 
   // ---- Programme skeleton -----------------------------------------------
   let programme = await prisma.programme.findFirst({ where: { active: true } });
   if (!programme) {
-    const start = process.env.SEED_PROGRAMME_START
-      ? new Date(process.env.SEED_PROGRAMME_START)
+    const start = opts.programmeStart
+      ? opts.programmeStart
       : demo
         ? new Date(Date.now() - 37 * DAY) // demo: mid-programme (week 6)
         : new Date(Date.now() + 14 * DAY);
@@ -202,17 +220,19 @@ export async function seedGrowthOs(prisma: PrismaClient) {
   }
 
   if (!demo) {
-    report(credentials, false);
+    if (!opts.quiet) report(credentials, false);
     return;
   }
   if ((await prisma.operator.count({ where: { isSynthetic: true } })) > 0) {
-    console.log("Synthetic demo cohort already present — skipping demo data.");
-    report(credentials, true);
+    if (!opts.quiet) {
+      console.log("Synthetic demo cohort already present — skipping demo data.");
+      report(credentials, true);
+    }
     return;
   }
 
-  await seedDemoCohort(prisma, programme.id, programme.startDate, founderId, credentials);
-  report(credentials, true);
+  await seedDemoCohort(prisma, programme.id, programme.startDate, founderId, credentials, opts.demoPassword);
+  if (!opts.quiet) report(credentials, true);
 }
 
 function report(credentials: string[], demo: boolean) {
@@ -228,15 +248,16 @@ async function seedDemoCohort(
   programmeId: string,
   start: Date,
   founderId: string | null,
-  credentials: string[]
+  credentials: string[],
+  demoPassword?: string
 ) {
   const week = (w: number, dayOffset = 0) => new Date(start.getTime() + ((w - 1) * 7 + dayOffset) * DAY);
 
-  const adminPw = process.env.SEED_DEMO_PASSWORD || genPassword();
+  const adminPw = demoPassword || genPassword();
   const admin = await prisma.user.create({
     data: { email: "admin@demo.example", name: "Demo Programme Admin", role: "ADMIN", passwordHash: await hashPassword(adminPw) },
   });
-  credentials.push(`ADMIN    admin@demo.example  ${process.env.SEED_DEMO_PASSWORD ? "(SEED_DEMO_PASSWORD)" : adminPw}`);
+  credentials.push(`ADMIN    admin@demo.example  ${demoPassword ? "(SEED_DEMO_PASSWORD)" : adminPw}`);
   const ownerId = founderId ?? admin.id;
 
   const ops = [
@@ -293,11 +314,11 @@ async function seedDemoCohort(
   const opId = (n: number) => created[n].id;
 
   // Operator logins for the first two demo operators (data-isolation demo)
-  const opPw = process.env.SEED_DEMO_PASSWORD || genPassword();
+  const opPw = demoPassword || genPassword();
   for (const n of [0, 1]) {
     const email = `operator${n + 1}@demo.example`;
     await prisma.user.create({ data: { email, name: `${created[n].name} (operator)`, role: "OPERATOR", operatorId: opId(n), passwordHash: await hashPassword(opPw) } });
-    credentials.push(`OPERATOR ${email}  ${process.env.SEED_DEMO_PASSWORD ? "(SEED_DEMO_PASSWORD)" : opPw}  → ${created[n].name}`);
+    credentials.push(`OPERATOR ${email}  ${demoPassword ? "(SEED_DEMO_PASSWORD)" : opPw}  → ${created[n].name}`);
   }
 
   // Assessments

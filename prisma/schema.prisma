@@ -10,9 +10,14 @@ generator client {
   output   = "../src/generated/prisma"
 }
 
+// DATABASE_URL: runtime connection. On Supabase + Vercel use the pooled
+//   (Supavisor transaction mode, port 6543) URL with ?pgbouncer=true&connection_limit=1.
+// DIRECT_URL: direct/session connection (port 5432) used by `prisma migrate`.
+//   Locally and in CI it can be the same value as DATABASE_URL.
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ---------------------------------------------------------------------------

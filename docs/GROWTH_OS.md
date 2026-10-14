@@ -227,7 +227,7 @@ policy text. Get NZ Privacy Act 2020 advice before onboarding real operators.
 | Suite | Command | Covers | Result (14 Oct) |
 |---|---|---|---|
 | Unit | `npm test` | timeline, stage validation, scoring, experiment verdicts & caveats, commercial separation, scenarios, results comparison, weekly brief, authz rules, consent gate, CSV escaping | 12/12 pass |
-| Integration (Postgres) | `TEST_DATABASE_URL=… npm run test:integration` | operator A cannot read B's opportunities/tasks/measurements/learnings/experiments/briefs; internal notes never exposed; unlinked/staff actors rejected by DAL; login success stores only token hash; wrong password / deactivated / unlinked → same error; lockout; expired session removal | 8/8 pass |
+| Integration (Postgres) | `TEST_DATABASE_URL=… npm run test:integration` (also asserts RLS on every table) | operator A cannot read B's opportunities/tasks/measurements/learnings/experiments/briefs; internal notes never exposed; unlinked/staff actors rejected by DAL; login success stores only token hash; wrong password / deactivated / unlinked → same error; lockout; expired session removal | 8/8 pass |
 | E2E (browser) | `E2E_BASE_URL=… node tests/e2e/workflows.e2e.cjs` | login errors; admin blocked from commercial/users/founder exports; create operator; consent gate; signal + draft brief; assessment completion gate; opportunity → project → task; measurement; experiment threshold gate; library status gate; deal stage rule; full export excludes credentials; markdown report; operator blocked from exports/reports; operator update; logout | 25/25 pass (dev and production builds) |
 
 Also: `npm run lint` clean, `tsc` clean, `next build` succeeds, every page
@@ -281,14 +281,15 @@ Demo seed (`SEED_DEMO=true`) creates `admin@demo.example`,
 
 ## 12. Deployment
 
-- Any Node 20+ host that runs `next build && next start` (Vercel, Render,
-  Railway, Fly, a VM). Managed Postgres with automated backups.
-- Env: `DATABASE_URL` (TLS), `NODE_ENV=production`. Seed vars only for first run.
-- Release: `npm ci && npx prisma migrate deploy && npm run build && npm start`.
-- HTTPS is required (session cookie is `Secure` in production).
-- Run `npm test` and the integration suite (against a disposable DB) in CI
-  before each deploy.
-- Never set `SEED_DEMO=true` on a database holding real operator data.
+Production target: **Vercel (functions in Sydney, `syd1`) + Supabase Postgres
+(Sydney)**. Step-by-step guide, env vars, first-run `/setup`, rollback,
+backups and security checklist: [`DEPLOYMENT.md`](DEPLOYMENT.md).
+
+- Production builds run `prisma migrate deploy` before `next build`
+  (`scripts/vercel-build.mjs`); previews never migrate.
+- Row-level security is enabled on every table to block Supabase's
+  auto-generated Data API; an integration test enforces it for new tables.
+- CI (GitHub Actions) runs lint, type-check, unit, integration and build.
 
 ## 13. Phase report
 
