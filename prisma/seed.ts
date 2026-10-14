@@ -8,7 +8,7 @@
 
 import { PrismaClient } from "../src/generated/prisma";
 import { rotorua } from "../src/config/destinations/rotorua";
-import { tourismPlans, tourismProduct } from "./catalogue/tourism";
+import { retiredTourismPlans, tourismPlans, tourismProduct } from "./catalogue/tourism";
 
 const prisma = new PrismaClient();
 
@@ -80,7 +80,22 @@ async function seedCatalogue() {
       create: { ...plan, productId: product.id },
     });
   }
-  console.log(`Seeded catalogue: ${product.name} with ${tourismPlans.length} plans (prices unset — on request).`);
+  for (const plan of retiredTourismPlans) {
+    await prisma.plan.upsert({
+      where: { key: plan.key },
+      update: { ...plan, productId: product.id },
+      create: { ...plan, productId: product.id },
+    });
+  }
+  const known = [...tourismPlans, ...retiredTourismPlans].map((p) => p.key);
+  const retired = await prisma.plan.updateMany({
+    where: { productId: product.id, key: { notIn: known }, active: true },
+    data: { active: false, isPublic: false },
+  });
+  console.log(
+    `Seeded catalogue: ${product.name} with ${tourismPlans.length} plans` +
+      (retired.count ? `; retired ${retired.count} plan(s) no longer in the catalogue.` : ".")
+  );
 }
 
 main()

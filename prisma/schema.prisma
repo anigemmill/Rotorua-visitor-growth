@@ -787,6 +787,7 @@ model Plan {
   billingInterval BillingInterval
   priceCents      Int? // null = price on request / not yet set
   currency        String          @default("NZD")
+  priceNote       String? // shown beside the price, e.g. "per month, excl. GST"
   isPublic        Boolean         @default(true) // shown in the self-serve catalogue
   selfServeTrial  Boolean         @default(false) // customer may start a trial without staff
   trialDays       Int?

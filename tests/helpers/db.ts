@@ -49,7 +49,10 @@ export async function makeOrg(name: string, owner?: PublicUser) {
 
 export const TEST_ENTITLEMENTS = {
   features: { "integrations.website": true, "integrations.ga4": true, "integrations.search_console": true },
-  limits: { brands: 2, users: 3, integrations: 2, scheduledWorkflows: 2, monthlyAgentRuns: 100, monthlyModelBudgetUsd: 50 },
+  limits: { brands: 2, users: 3, integrations: 2, historyDays: 90, customWorkflows: 0 },
+  reporting: { cadences: ["weekly"] },
+  support: { tier: "standard" },
+  ai: { monthlyAllowanceUsd: 10, warnAtPercent: 80, hardLimitPercent: 100 },
 };
 
 export async function makeCatalogue(opts: { trialDays?: number | null } = {}) {

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  allowsCadence,
   hasFeature,
+  historyStart,
   limitFor,
   mergeEntitlements,
   resolveAccess,
@@ -82,5 +84,38 @@ describe("entitlements", () => {
   it("rejects malformed plan configuration rather than guessing", () => {
     expect(() => mergeEntitlements({ limits: { brands: -1 } }, null)).toThrow();
     expect(() => mergeEntitlements({ features: { "not.a.feature": true } }, null)).toThrow();
+  });
+});
+
+describe("reporting, history, support and AI allowance", () => {
+  const plan = {
+    features: {},
+    limits: { historyDays: 90 },
+    reporting: { cadences: ["weekly"] },
+    support: { tier: "standard" },
+    ai: { monthlyAllowanceUsd: 35 },
+  };
+
+  it("applies defaults and section overrides", () => {
+    const e = mergeEntitlements(plan, { reporting: { cadences: ["daily", "weekly"] }, ai: { monthlyAllowanceUsd: 60 } });
+    expect(allowsCadence(e, "daily")).toBe(true);
+    expect(e.support.tier).toBe("standard");
+    expect(e.ai).toEqual({ monthlyAllowanceUsd: 60, warnAtPercent: 80, hardLimitPercent: 100 });
+  });
+  it("computes the history window", () => {
+    const e = mergeEntitlements(plan, null);
+    expect(historyStart(e, NOW)!.toISOString()).toBe("2026-07-15T00:00:00.000Z");
+    expect(historyStart(mergeEntitlements(plan, { limits: { historyDays: null } }), NOW)).toBeNull();
+  });
+  it("never allows an unlimited or nonsensical AI allowance", () => {
+    expect(() => mergeEntitlements({ ai: { monthlyAllowanceUsd: 0 } }, null)).toThrow();
+    expect(() => mergeEntitlements({ ai: { monthlyAllowanceUsd: null } }, null)).toThrow();
+    expect(() => mergeEntitlements({ ai: { monthlyAllowanceUsd: 10, hardLimitPercent: 500 } }, null)).toThrow();
+    expect(() => mergeEntitlements({ ai: { monthlyAllowanceUsd: 10, warnAtPercent: 100, hardLimitPercent: 100 } }, null)).not.toThrow();
+  });
+  it("a plan without AI grants no AI usage unless an override sets an allowance", () => {
+    expect(mergeEntitlements({}, null).ai).toBeNull();
+    expect(mergeEntitlements({}, { ai: { warnAtPercent: 50 } }).ai).toBeNull();
+    expect(mergeEntitlements({}, { ai: { monthlyAllowanceUsd: 5 } }).ai?.monthlyAllowanceUsd).toBe(5);
   });
 });

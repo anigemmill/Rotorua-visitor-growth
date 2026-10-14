@@ -33,7 +33,7 @@ export interface LicenseState {
   access: AccessDecision;
 }
 
-const NO_ENTITLEMENTS: Entitlements = { features: {}, limits: {} };
+const NO_ENTITLEMENTS: Entitlements = { features: {}, limits: {}, reporting: { cadences: [] }, support: { tier: "standard" }, ai: null };
 
 export async function getLicenseState(
   db: TenantDb,

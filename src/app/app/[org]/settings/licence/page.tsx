@@ -1,6 +1,7 @@
 import { ActionForm, FormStatus, SubmitButton } from "@/components/platform/forms";
 import { Notice, PageHeader, Panel, Pill, formatDate } from "@/components/platform/ui";
-import { FEATURE_LABELS, LIMIT_LABELS, type FeatureKey, type LimitKey } from "@/lib/platform/entitlements";
+import { formatPrice, PlanSummary } from "@/components/platform/PlanSummary";
+import { mergeEntitlements } from "@/lib/platform/entitlements";
 import { getLicenseState, listCatalogue } from "@/lib/platform/licensing";
 import { roleCan } from "@/lib/platform/permissions";
 import { requireOrg } from "@/lib/web/session";
@@ -39,29 +40,10 @@ export default async function LicencePage({ params }: PageProps<"/app/[org]/sett
               <dd>{formatDate(l.trialEndsAt ?? l.currentPeriodEnd)}</dd>
             </div>
           </dl>
-          <div className="mt-5 grid gap-6 md:grid-cols-2">
-            <div>
-              <p className="text-xs font-medium uppercase text-black/45 dark:text-white/45">Included</p>
-              <ul className="mt-1 space-y-0.5 text-sm">
-                {(Object.keys(FEATURE_LABELS) as FeatureKey[]).map((f) => (
-                  <li key={f} className={state.entitlements.features[f] ? "" : "text-black/35 line-through dark:text-white/35"}>
-                    {FEATURE_LABELS[f]}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="text-xs font-medium uppercase text-black/45 dark:text-white/45">Limits</p>
-              <ul className="mt-1 space-y-0.5 text-sm">
-                {(Object.keys(LIMIT_LABELS) as LimitKey[]).map((k) => {
-                  const v = state.entitlements.limits[k];
-                  return (
-                    <li key={k}>
-                      {v === null ? "Unlimited" : (v ?? 0)} {LIMIT_LABELS[k]}
-                    </li>
-                  );
-                })}
-              </ul>
+          <div className="mt-5">
+            <p className="text-xs font-medium uppercase text-black/45 dark:text-white/45">Your plan includes</p>
+            <div className="mt-2">
+              <PlanSummary e={state.entitlements} showExcluded />
             </div>
           </div>
           <p className="mt-5 text-sm text-black/55 dark:text-white/55">
@@ -77,6 +59,13 @@ export default async function LicencePage({ params }: PageProps<"/app/[org]/sett
             <div key={product.id} className="grid gap-4 md:grid-cols-3">
               {product.plans.map((plan) => (
                 <Panel key={plan.id} title={plan.name} description={plan.description}>
+                  <p className="mb-3 font-semibold">
+                    {formatPrice(plan.priceCents, plan.currency)}{" "}
+                    <span className="text-xs font-normal text-black/55 dark:text-white/55">{plan.priceNote}</span>
+                  </p>
+                  <div className="mb-4">
+                    <PlanSummary e={mergeEntitlements(plan.entitlements, null)} />
+                  </div>
                   {plan.selfServeTrial && plan.trialDays ? (
                     canManage ? (
                       <ActionForm action={startTrialAction}>

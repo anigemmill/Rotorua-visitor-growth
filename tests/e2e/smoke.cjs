@@ -35,7 +35,7 @@ const check = (name, ok, extra = "") => { results.push(`${ok ? "PASS" : "FAIL"} 
   check("unauthenticated workspace → login", a.url().includes("/login"), a.url());
   await a.goto(`${BASE}/`);
   await a.screenshot({ path: `${SHOTS}/01-landing.png`, fullPage: true });
-  check("landing shows plans", (await a.textContent("body")).includes("Pilot"));
+  check("landing shows plans", (await a.textContent("body")).includes("Starter"));
 
   await a.goto(`${BASE}/signup`);
   await a.fill("#f-name", "Aroha Owner");

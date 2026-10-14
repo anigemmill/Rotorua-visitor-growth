@@ -4,11 +4,14 @@
 // Two separate questions are answered here:
 //   1. Access mode — given a licence's status and dates, may the tenant use
 //      the product fully, read-only, or not at all?
-//   2. Entitlements — which features and limits does the tenant's plan (plus
-//      any per-licence overrides) grant?
+//   2. Entitlements — which features, limits, reporting options, support tier
+//      and AI usage allowance does the tenant's plan (plus any per-licence
+//      overrides) grant?
 //
-// The commercial licence agreement is a legal document; this module is only
-// the technical enforcement of whatever that agreement grants.
+// Every commercial value lives in data (Plan.entitlements, overridable per
+// License) — see prisma/catalogue/tourism.ts. Nothing here hard-codes a
+// plan. The commercial licence agreement is a legal document; this module is
+// only the technical enforcement of whatever that agreement grants.
 
 import * as z from "zod";
 import type { LicenseStatus } from "@/generated/prisma";
@@ -25,41 +28,77 @@ export const FEATURE_KEYS = [
   "reports.website_search",
   "reports.campaign",
   "reports.commercial",
-  "agents.scheduled_workflows",
 ] as const;
 
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
-export const LIMIT_KEYS = [
-  "brands",
-  "users",
-  "integrations",
-  "scheduledWorkflows",
-  "monthlyAgentRuns",
-  "monthlyModelBudgetUsd",
-] as const;
+/** Countable limits. `null` means no limit ("Custom" plans set real numbers per agreement via overrides). */
+export const LIMIT_KEYS = ["brands", "users", "integrations", "historyDays", "customWorkflows"] as const;
 
 export type LimitKey = (typeof LIMIT_KEYS)[number];
 
-const limitValue = z.number().int().nonnegative().nullable(); // null = unlimited
+export const REPORT_CADENCES = ["daily", "weekly", "monthly"] as const;
+export type ReportCadence = (typeof REPORT_CADENCES)[number];
+
+export const SUPPORT_TIERS = ["standard", "priority", "dedicated"] as const;
+export type SupportTier = (typeof SUPPORT_TIERS)[number];
+
+const limitValue = z.number().int().nonnegative().nullable();
+
+/**
+ * Claude API usage allowance per calendar month (UTC), in US dollars because
+ * that is what the provider bills. Never unlimited: the schema requires a
+ * positive allowance and caps the hard limit at 2× the allowance.
+ */
+export const AiAllowanceSchema = z
+  .object({
+    monthlyAllowanceUsd: z.number().positive().max(100_000),
+    /** Warn the workspace (and staff) once usage passes this share of the allowance. */
+    warnAtPercent: z.number().int().min(1).max(100).default(80),
+    /** New AI work is refused once usage would pass this share. 100 = stop at the allowance. */
+    hardLimitPercent: z.number().int().min(100).max(200).default(100),
+  })
+  .refine((a) => a.warnAtPercent <= a.hardLimitPercent, "warnAtPercent must not exceed hardLimitPercent");
+
+export type AiAllowance = z.infer<typeof AiAllowanceSchema>;
 
 export const EntitlementsSchema = z.object({
   features: z.partialRecord(z.enum(FEATURE_KEYS), z.boolean()).default({}),
   limits: z.partialRecord(z.enum(LIMIT_KEYS), limitValue).default({}),
+  reporting: z
+    .object({ cadences: z.array(z.enum(REPORT_CADENCES)).max(3).default([]) })
+    .default({ cadences: [] }),
+  support: z.object({ tier: z.enum(SUPPORT_TIERS) }).default({ tier: "standard" }),
+  /** Absent = no AI usage at all (e.g. no licence). */
+  ai: AiAllowanceSchema.nullable().default(null),
 });
 
 export type Entitlements = z.infer<typeof EntitlementsSchema>;
 
-export const EntitlementOverridesSchema = EntitlementsSchema.partial();
+/** Licence overrides: any subset, merged section by section over the plan. */
+export const EntitlementOverridesSchema = z.object({
+  features: z.partialRecord(z.enum(FEATURE_KEYS), z.boolean()).optional(),
+  limits: z.partialRecord(z.enum(LIMIT_KEYS), limitValue).optional(),
+  reporting: z.object({ cadences: z.array(z.enum(REPORT_CADENCES)).max(3) }).optional(),
+  support: z.object({ tier: z.enum(SUPPORT_TIERS) }).optional(),
+  ai: z
+    .object({
+      monthlyAllowanceUsd: z.number().positive().max(100_000).optional(),
+      warnAtPercent: z.number().int().min(1).max(100).optional(),
+      hardLimitPercent: z.number().int().min(100).max(200).optional(),
+    })
+    .optional(),
+});
+
+export type EntitlementOverrides = z.infer<typeof EntitlementOverridesSchema>;
 
 /** Human labels, used in the catalogue and admin UI. */
 export const LIMIT_LABELS: Record<LimitKey, string> = {
   brands: "brands",
   users: "users",
   integrations: "connected integrations",
-  scheduledWorkflows: "scheduled workflows",
-  monthlyAgentRuns: "agent runs per month",
-  monthlyModelBudgetUsd: "USD of AI model usage per month",
+  historyDays: "days of reporting history",
+  customWorkflows: "custom workflows",
 };
 
 export const FEATURE_LABELS: Record<FeatureKey, string> = {
@@ -74,16 +113,25 @@ export const FEATURE_LABELS: Record<FeatureKey, string> = {
   "reports.website_search": "Website & Search Report",
   "reports.campaign": "Campaign Performance Report",
   "reports.commercial": "Commercial Performance Report",
-  "agents.scheduled_workflows": "Scheduled agent workflows",
+};
+
+export const SUPPORT_LABELS: Record<SupportTier, string> = {
+  standard: "Standard support",
+  priority: "Priority support",
+  dedicated: "Dedicated support",
 };
 
 /** Plan entitlements with licence overrides merged on top. */
 export function mergeEntitlements(planEntitlements: unknown, overrides: unknown): Entitlements {
   const base = EntitlementsSchema.parse(planEntitlements ?? {});
   const over = overrides == null ? {} : EntitlementOverridesSchema.parse(overrides);
+  const ai = base.ai || over.ai?.monthlyAllowanceUsd ? AiAllowanceSchema.parse({ ...(base.ai ?? {}), ...(over.ai ?? {}) }) : null;
   return {
     features: { ...base.features, ...(over.features ?? {}) },
     limits: { ...base.limits, ...(over.limits ?? {}) },
+    reporting: over.reporting ?? base.reporting,
+    support: over.support ?? base.support,
+    ai,
   };
 }
 
@@ -92,9 +140,9 @@ export function hasFeature(e: Entitlements, feature: FeatureKey): boolean {
 }
 
 /**
- * Returns the numeric limit, `null` for unlimited. A limit key the plan does
- * not mention is treated as 0 — features must be granted explicitly, never by
- * omission.
+ * Returns the numeric limit, `null` for no limit. A limit key the plan does
+ * not mention is treated as 0 — entitlements must be granted explicitly,
+ * never by omission.
  */
 export function limitFor(e: Entitlements, key: LimitKey): number | null {
   const v = e.limits[key];
@@ -104,6 +152,16 @@ export function limitFor(e: Entitlements, key: LimitKey): number | null {
 export function withinLimit(e: Entitlements, key: LimitKey, currentCount: number, adding = 1): boolean {
   const max = limitFor(e, key);
   return max === null || currentCount + adding <= max;
+}
+
+export function allowsCadence(e: Entitlements, cadence: ReportCadence): boolean {
+  return e.reporting.cadences.includes(cadence);
+}
+
+/** Earliest date the tenant may report on; null when history is unlimited. */
+export function historyStart(e: Entitlements, now: Date = new Date()): Date | null {
+  const days = limitFor(e, "historyDays");
+  return days === null ? null : new Date(now.getTime() - days * 24 * 60 * 60 * 1000);
 }
 
 // ---------------------------------------------------------------------------

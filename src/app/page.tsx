@@ -1,17 +1,12 @@
 import Link from "next/link";
 import { ButtonLink, Pill } from "@/components/platform/ui";
 import { AGENTS } from "@/lib/agents/registry";
-import { LIMIT_LABELS, mergeEntitlements, FEATURE_LABELS, type LimitKey } from "@/lib/platform/entitlements";
+import { formatPrice, PlanSummary } from "@/components/platform/PlanSummary";
+import { mergeEntitlements } from "@/lib/platform/entitlements";
 import { listCatalogue } from "@/lib/platform/licensing";
 import { getCurrentUser } from "@/lib/web/session";
 
 export const dynamic = "force-dynamic";
-
-function price(cents: number | null, currency: string, interval: string) {
-  if (cents == null) return "Pricing on request";
-  const amount = new Intl.NumberFormat("en-NZ", { style: "currency", currency }).format(cents / 100);
-  return `${amount} / ${interval === "YEAR" ? "year" : interval === "MONTH" ? "month" : "term"}`;
-}
 
 export default async function LandingPage() {
   const [user, catalogue] = await Promise.all([getCurrentUser(), listCatalogue()]);
@@ -62,22 +57,16 @@ export default async function LandingPage() {
                   <div key={plan.id} className="flex flex-col rounded-xl border border-black/10 bg-white p-5 dark:border-white/10 dark:bg-white/[0.03]">
                     <h3 className="font-semibold">{plan.name}</h3>
                     <p className="mt-1 text-sm text-black/60 dark:text-white/60">{plan.description}</p>
-                    <p className="mt-4 text-lg font-semibold">{price(plan.priceCents, plan.currency, plan.billingInterval)}</p>
-                    {plan.selfServeTrial && plan.trialDays && <p className="text-xs text-teal-700 dark:text-teal-400">{plan.trialDays}-day pilot available</p>}
-                    <ul className="mt-4 space-y-1 text-sm">
-                      {(Object.entries(e.limits) as [LimitKey, number | null][]).map(([k, v]) => (
-                        <li key={k}>
-                          {v === null ? "Unlimited" : v} {LIMIT_LABELS[k]}
-                        </li>
-                      ))}
-                    </ul>
-                    <ul className="mt-3 space-y-1 text-xs text-black/60 dark:text-white/60">
-                      {Object.entries(e.features)
-                        .filter(([, on]) => on)
-                        .map(([k]) => (
-                          <li key={k}>✓ {FEATURE_LABELS[k as keyof typeof FEATURE_LABELS]}</li>
-                        ))}
-                    </ul>
+                    <p className="mt-4 text-lg font-semibold">
+                      {formatPrice(plan.priceCents, plan.currency)}
+                      {plan.priceNote && <span className="ml-1 text-xs font-normal text-black/55 dark:text-white/55">{plan.priceNote}</span>}
+                    </p>
+                    {plan.selfServeTrial && plan.trialDays && (
+                      <p className="text-xs text-teal-700 dark:text-teal-400">{plan.trialDays}-day pilot available</p>
+                    )}
+                    <div className="mt-4">
+                      <PlanSummary e={e} />
+                    </div>
                   </div>
                 );
               })}
@@ -96,7 +85,7 @@ export default async function LandingPage() {
             ))}
           </div>
           <p className="mt-6 text-sm text-black/55 dark:text-white/55">
-            Agents are being released in phases. Your workspace shows exactly which are live and what each one needs.
+            Prices are indicative and in New Zealand dollars. Agents are being released in phases. Your workspace shows exactly which are live and what each one needs.
           </p>
         </section>
       </main>
