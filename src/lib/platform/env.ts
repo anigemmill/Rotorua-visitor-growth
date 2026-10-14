@@ -17,6 +17,17 @@ const EnvSchema = z.object({
   /** Public origin of the app, used for OAuth redirect URIs (Phase 2). */
   APP_URL: z.url().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
+  /**
+   * Transactional email: "ses" (production — Amazon SES), "file" (writes each
+   * message to EMAIL_FILE_DIR for local dev and CI) or "memory" (tests).
+   */
+  EMAIL_TRANSPORT: z.enum(["ses", "file", "memory"]).optional(),
+  EMAIL_FROM: z.string().optional(),
+  EMAIL_FILE_DIR: z.string().optional(),
+  /** Escape hatch for CI's production build only; never set in a real deployment. */
+  EMAIL_FILE_TRANSPORT_ALLOWED: z.enum(["true", "false"]).optional(),
+  /** SES region. Sydney by default (docs/platform/HOSTING.md). */
+  SES_REGION: z.string().default("ap-southeast-2"),
 });
 
 export type Env = z.infer<typeof EnvSchema>;

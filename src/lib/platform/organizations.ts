@@ -11,11 +11,9 @@ import { prisma } from "@/lib/prisma";
 import { recordAudit, type Actor } from "./audit";
 import type { PublicUser } from "./auth";
 import { fieldErrors } from "./auth";
-import { ConflictError, ForbiddenError, LimitExceededError, NotFoundError, ValidationError } from "./errors";
-import { getLicenseState, LIMIT_LABELS } from "./licensing";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "./errors";
 import { roleCan, type Permission } from "./permissions";
 import { tenantDb, type TenantDb } from "./tenant-db";
-import { withinLimit } from "./entitlements";
 
 export interface OrgContext {
   user: PublicUser;
@@ -56,6 +54,9 @@ export const CreateOrganizationSchema = z.object({
 
 /** Creates a workspace with the caller as OWNER, plus an initial business profile. */
 export async function createOrganization(user: PublicUser, input: { name: string }, actor: Actor) {
+  if (!user.emailVerified) {
+    throw new ForbiddenError("Please confirm your email address before creating a workspace.");
+  }
   const parsed = CreateOrganizationSchema.safeParse(input);
   if (!parsed.success) throw new ValidationError("Please check the highlighted fields.", fieldErrors(parsed.error));
   const slug = await uniqueSlug(parsed.data.name);
@@ -105,49 +106,6 @@ export function requirePermission(ctx: OrgContext, permission: Permission): void
 // ---------------------------------------------------------------------------
 // Members
 // ---------------------------------------------------------------------------
-
-export const AddMemberSchema = z.object({
-  email: z.email("Enter a valid email address.").trim().toLowerCase(),
-  role: z.enum(["ADMIN", "MEMBER", "VIEWER"]),
-});
-
-/**
- * Adds an existing platform user to the workspace. Email invitations for
- * people without an account need an email provider (see roadmap).
- */
-export async function addMember(ctx: OrgContext, input: z.input<typeof AddMemberSchema>) {
-  requirePermission(ctx, "members.manage");
-  const parsed = AddMemberSchema.safeParse(input);
-  if (!parsed.success) throw new ValidationError("Please check the highlighted fields.", fieldErrors(parsed.error));
-
-  const state = await getLicenseState(ctx.db);
-  const count = await ctx.db.membership.count();
-  if (!withinLimit(state.entitlements, "users", count)) {
-    throw new LimitExceededError(LIMIT_LABELS.users, state.entitlements.limits.users ?? 0);
-  }
-
-  const user = await prisma.user.findUnique({ where: { email: parsed.data.email } });
-  if (!user) {
-    throw new ValidationError("No account uses that email yet. Ask them to sign up first.", {
-      email: ["No account uses that email yet."],
-    });
-  }
-  const existing = await ctx.db.membership.findFirst({ where: { userId: user.id } });
-  if (existing) throw new ConflictError("That person is already a member of this workspace.");
-
-  const membership = await ctx.db.membership.create({
-    data: { organizationId: ctx.organization.id, userId: user.id, role: parsed.data.role },
-  });
-  await recordAudit({
-    actor: ctx.actor,
-    organizationId: ctx.organization.id,
-    action: "member.added",
-    targetType: "User",
-    targetId: user.id,
-    metadata: { role: parsed.data.role },
-  });
-  return membership;
-}
 
 export async function removeMember(ctx: OrgContext, membershipId: string) {
   requirePermission(ctx, "members.manage");

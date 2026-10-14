@@ -108,3 +108,12 @@ describe("sessions", () => {
     expect(await revokeAllSessions(u.id)).toBe(2);
   });
 });
+
+describe("email normalisation", () => {
+  it("accepts surrounding spaces and mixed case at sign-up and login", async () => {
+    await signUp({ ...creds, email: "  Mixed.Case@Example.COM " }, meta);
+    await expect(authenticate({ email: " mixed.case@example.com  ", password: creds.password }, meta)).resolves.toMatchObject({
+      email: "mixed.case@example.com",
+    });
+  });
+});

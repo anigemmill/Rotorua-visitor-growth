@@ -11,8 +11,8 @@ import {
 } from "@/lib/platform/errors";
 import { getLicenseState, startTrial } from "@/lib/platform/licensing";
 import { advanceStage, createBrand, updateBusinessProfile } from "@/lib/platform/onboarding";
-import { addMember, getOrgContext, removeMember } from "@/lib/platform/organizations";
-import { actorFor, makeCatalogue, makeOrg, makeUser, resetDb } from "../helpers/db";
+import { getOrgContext, removeMember } from "@/lib/platform/organizations";
+import { actorFor, inviteAndAccept, makeCatalogue, makeOrg, makeUser, resetDb } from "../helpers/db";
 
 beforeEach(resetDb);
 
@@ -36,7 +36,7 @@ describe("self-serve trial", () => {
     await makeCatalogue();
     const { ctx } = await makeOrg("Trial Co");
     const admin = await makeUser("Admin");
-    // No licence yet, so add the membership directly rather than via addMember (which applies plan limits).
+    // No licence yet (invitations require one), so create the membership directly.
     await prisma.membership.create({ data: { organizationId: ctx.organization.id, userId: admin.id, role: "ADMIN" } });
     const adminCtx = await getOrgContext(admin, ctx.organization.slug, actorFor(admin));
     await expect(startTrial(adminCtx, "tourism-pilot")).rejects.toBeInstanceOf(ForbiddenError);
@@ -103,11 +103,11 @@ describe("plan limits", () => {
     const u1 = await makeUser("U1");
     const u2 = await makeUser("U2");
     const u3 = await makeUser("U3");
-    await addMember(ctx, { email: u1.email, role: "MEMBER" });
-    const m2 = await addMember(ctx, { email: u2.email, role: "VIEWER" });
-    await expect(addMember(ctx, { email: u3.email, role: "VIEWER" })).rejects.toBeInstanceOf(LimitExceededError);
+    await inviteAndAccept(ctx, u1, "MEMBER");
+    const m2 = await inviteAndAccept(ctx, u2, "VIEWER");
+    await expect(inviteAndAccept(ctx, u3, "VIEWER")).rejects.toBeInstanceOf(LimitExceededError);
     await removeMember(ctx, m2.id);
-    await addMember(ctx, { email: u3.email, role: "VIEWER" });
+    await inviteAndAccept(ctx, u3, "VIEWER");
   });
 });
 
@@ -117,7 +117,7 @@ describe("roles", () => {
     const { ctx } = await makeOrg("Roles Co");
     await startTrial(ctx, "tourism-pilot");
     const viewer = await makeUser("Viewer");
-    await addMember(ctx, { email: viewer.email, role: "VIEWER" });
+    await inviteAndAccept(ctx, viewer, "VIEWER");
     const vctx = await getOrgContext(viewer, ctx.organization.slug, actorFor(viewer));
 
     await expect(updateBusinessProfile(vctx, { businessName: "Hacked" })).rejects.toBeInstanceOf(ForbiddenError);

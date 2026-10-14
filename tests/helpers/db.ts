@@ -1,9 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import type { Actor } from "@/lib/platform/audit";
 import { signUp, type PublicUser } from "@/lib/platform/auth";
-import { createOrganization, getOrgContext } from "@/lib/platform/organizations";
+import { acceptInvitation, createInvitation } from "@/lib/platform/account";
+import { memoryOutbox, type EmailMessage } from "@/lib/platform/email";
+import { createOrganization, getOrgContext, type OrgContext } from "@/lib/platform/organizations";
 
 const PLATFORM_TABLES = [
+  "Invitation",
+  "UserToken",
   "UsageAlert",
   "UsageRecord",
   "ModelRate",
@@ -23,6 +27,7 @@ const PLATFORM_TABLES = [
 ];
 
 export async function resetDb() {
+  memoryOutbox.length = 0;
   await prisma.$executeRawUnsafe(
     `TRUNCATE ${PLATFORM_TABLES.map((t) => `"${t}"`).join(", ")} RESTART IDENTITY CASCADE`
   );
@@ -31,12 +36,16 @@ export async function resetDb() {
 export const meta = { ipAddress: "203.0.113.10", userAgent: "vitest" };
 
 let counter = 0;
-export async function makeUser(name = "Test User"): Promise<PublicUser> {
+/** A signed-up user. Verified by default, since most flows require it. */
+export async function makeUser(name = "Test User", opts: { verified?: boolean } = {}): Promise<PublicUser> {
   counter += 1;
-  return signUp({ name, email: `user${counter}-${Date.now()}@example.com`, password: "correct horse battery" }, {
+  const user = await signUp({ name, email: `user${counter}-${Date.now()}@example.com`, password: "correct horse battery" }, {
     ...meta,
     ipAddress: null,
   });
+  if (opts.verified === false) return user;
+  await prisma.user.update({ where: { id: user.id }, data: { emailVerifiedAt: new Date() } });
+  return { ...user, emailVerified: true };
 }
 
 export function actorFor(user: PublicUser): Actor {
@@ -90,4 +99,24 @@ export async function makeCatalogue(opts: { trialDays?: number | null } = {}) {
 export async function makeModelRates() {
   const { modelRates } = await import("../../prisma/catalogue/model-rates");
   await prisma.modelRate.createMany({ data: modelRates });
+}
+
+export function lastEmail(to: string, tag?: EmailMessage["tag"]): EmailMessage {
+  const msg = [...memoryOutbox].reverse().find((m) => m.to === to && (!tag || m.tag === tag));
+  if (!msg) throw new Error(`No ${tag ?? ""} email sent to ${to}`);
+  return msg;
+}
+
+/** The token from the link in an email. */
+export function tokenFrom(msg: EmailMessage): string {
+  const url = msg.text.match(/https?:\/\/\S+/)?.[0];
+  const token = url && new URL(url).searchParams.get("token");
+  if (!token) throw new Error("No token link in email");
+  return token;
+}
+
+export async function inviteAndAccept(ctx: OrgContext, user: PublicUser, role: "ADMIN" | "MEMBER" | "VIEWER") {
+  await createInvitation(ctx, { email: user.email, role });
+  await acceptInvitation(user, tokenFrom(lastEmail(user.email, "invitation")), actorFor(user));
+  return prisma.membership.findFirstOrThrow({ where: { organizationId: ctx.organization.id, userId: user.id } });
 }

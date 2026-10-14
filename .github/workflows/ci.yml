@@ -104,6 +104,8 @@ jobs:
         run: |
           # Ephemeral key generated per run; never a real secret.
           export CREDENTIAL_ENCRYPTION_KEYS="1:$(openssl rand -base64 32)"
+          # Emails go to files the smoke test reads (verification, invitation, reset links).
+          export EMAIL_TRANSPORT=file EMAIL_FILE_DIR="$RUNNER_TEMP/outbox" EMAIL_FILE_TRANSPORT_ALLOWED=true
           PORT=3100 npm start > server.log 2>&1 &
           npx --yes wait-on@8.0.3 --timeout 60000 http://localhost:3100
           BASE_URL=http://localhost:3100 node tests/e2e/smoke.cjs smoke-screenshots

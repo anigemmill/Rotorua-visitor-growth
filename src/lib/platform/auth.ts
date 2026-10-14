@@ -25,9 +25,16 @@ export interface RequestMeta {
   userAgent: string | null;
 }
 
+/** Normalise first, then validate (in Zod 4 a format check runs before .trim()). */
+export const EmailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email("Enter a valid email address.").max(254, "Email address is too long."));
+
 export const SignUpSchema = z.object({
   name: z.string().trim().min(1, "Enter your name.").max(120),
-  email: z.email("Enter a valid email address.").trim().toLowerCase().max(254),
+  email: EmailSchema,
   password: z
     .string()
     .min(PASSWORD_MIN_LENGTH, `Use at least ${PASSWORD_MIN_LENGTH} characters.`)
@@ -37,7 +44,7 @@ export const SignUpSchema = z.object({
 export type SignUpInput = z.input<typeof SignUpSchema>;
 
 export const LoginSchema = z.object({
-  email: z.email("Enter a valid email address.").trim().toLowerCase(),
+  email: EmailSchema,
   password: z.string().min(1, "Enter your password.").max(256),
 });
 
@@ -50,10 +57,10 @@ export function fieldErrors(error: z.ZodError): Record<string, string[]> {
   return out;
 }
 
-export type PublicUser = Pick<User, "id" | "email" | "name" | "platformRole">;
+export type PublicUser = Pick<User, "id" | "email" | "name" | "platformRole"> & { emailVerified: boolean };
 
-function toPublicUser(u: User): PublicUser {
-  return { id: u.id, email: u.email, name: u.name, platformRole: u.platformRole };
+export function toPublicUser(u: User): PublicUser {
+  return { id: u.id, email: u.email, name: u.name, platformRole: u.platformRole, emailVerified: u.emailVerifiedAt !== null };
 }
 
 export async function signUp(input: SignUpInput, meta: RequestMeta): Promise<PublicUser> {

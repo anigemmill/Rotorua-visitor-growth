@@ -4,3 +4,5 @@ process.env.DATABASE_URL =
 // Fixed, test-only key ring (not a real secret).
 process.env.CREDENTIAL_ENCRYPTION_KEYS =
   "1:" + Buffer.alloc(32, 1).toString("base64") + ",2:" + Buffer.alloc(32, 2).toString("base64");
+process.env.APP_URL = "http://localhost:3000";
+process.env.EMAIL_TRANSPORT = "memory";

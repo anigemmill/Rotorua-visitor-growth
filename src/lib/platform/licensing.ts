@@ -95,6 +95,7 @@ export async function listCatalogue() {
  */
 export async function startTrial(ctx: OrgContext, planKey: string, now: Date = new Date()) {
   requirePermission(ctx, "license.manage");
+  if (!ctx.user.emailVerified) throw new EntitlementError("Please confirm your email address before starting a trial.");
   const plan = await prisma.plan.findUnique({ where: { key: planKey }, include: { product: true } });
   if (!plan || !plan.active || !plan.isPublic || !plan.product.active) throw new NotFoundError("Plan not found.");
   if (!plan.selfServeTrial || !plan.trialDays) {

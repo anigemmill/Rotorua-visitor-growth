@@ -1,8 +1,9 @@
 import { ActionForm, Field, FormStatus, SubmitButton } from "@/components/platform/forms";
-import { PageHeader, Panel, Pill } from "@/components/platform/ui";
+import { PageHeader, Panel, Pill, formatDate } from "@/components/platform/ui";
+import { listPendingInvitations } from "@/lib/platform/account";
 import { MEMBERSHIP_ROLE_LABELS, roleCan } from "@/lib/platform/permissions";
 import { requireOrg } from "@/lib/web/session";
-import { addMemberAction, removeMemberAction } from "../../actions";
+import { inviteMemberAction, removeMemberAction, revokeInvitationAction } from "../../actions";
 
 export default async function TeamPage({ params }: PageProps<"/app/[org]/settings/team">) {
   const { org } = await params;
@@ -12,6 +13,7 @@ export default async function TeamPage({ params }: PageProps<"/app/[org]/setting
     orderBy: { createdAt: "asc" },
   });
   const canManage = roleCan(ctx.role, "members.manage");
+  const invitations = canManage ? await listPendingInvitations(ctx) : [];
 
   return (
     <>
@@ -43,8 +45,9 @@ export default async function TeamPage({ params }: PageProps<"/app/[org]/setting
           </ul>
         </Panel>
         {canManage && (
-          <Panel title="Add a member" description="They need an account first. Email invitations are coming soon.">
-            <ActionForm action={addMemberAction} resetOnSuccess>
+          <div className="space-y-6">
+          <Panel title="Invite someone" description="We'll email them a link that expires in 7 days. Pending invitations count towards your plan's user limit.">
+            <ActionForm action={inviteMemberAction} resetOnSuccess>
               <input type="hidden" name="org" value={ctx.organization.slug} />
               <Field name="email" label="Email" type="email" required />
               <Field
@@ -59,9 +62,33 @@ export default async function TeamPage({ params }: PageProps<"/app/[org]/setting
                 ]}
               />
               <FormStatus />
-              <SubmitButton>Add member</SubmitButton>
+              <SubmitButton>Send invitation</SubmitButton>
             </ActionForm>
           </Panel>
+          <Panel title="Pending invitations">
+            {invitations.length === 0 ? (
+              <p className="text-sm text-black/60 dark:text-white/60">None.</p>
+            ) : (
+              <ul className="divide-y divide-black/10 dark:divide-white/10">
+                {invitations.map((inv) => (
+                  <li key={inv.id} className="flex items-center justify-between gap-3 py-3 text-sm">
+                    <div>
+                      <p className="font-medium">{inv.email}</p>
+                      <p className="text-black/60 dark:text-white/60">
+                        {MEMBERSHIP_ROLE_LABELS[inv.role]} · expires {formatDate(inv.expiresAt)}
+                      </p>
+                    </div>
+                    <ActionForm action={revokeInvitationAction} className="" confirm={`Withdraw the invitation to ${inv.email}?`}>
+                      <input type="hidden" name="org" value={ctx.organization.slug} />
+                      <input type="hidden" name="invitationId" value={inv.id} />
+                      <SubmitButton variant="secondary">Withdraw</SubmitButton>
+                    </ActionForm>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+          </div>
         )}
       </div>
     </>

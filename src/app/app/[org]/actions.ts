@@ -16,7 +16,8 @@ import {
   updateBusinessKnowledge,
   updateBusinessProfile,
 } from "@/lib/platform/onboarding";
-import { addMember, removeMember, requestOrganizationDeletion, type OrgContext } from "@/lib/platform/organizations";
+import { createInvitation, revokeInvitation } from "@/lib/platform/account";
+import { removeMember, requestOrganizationDeletion, type OrgContext } from "@/lib/platform/organizations";
 import { ValidationError } from "@/lib/platform/errors";
 import { formObject, runAction, type ActionState } from "@/lib/web/action-state";
 import { requireOrg } from "@/lib/web/session";
@@ -88,10 +89,17 @@ export async function continueFromValidationAction(_: ActionState, fd: FormData)
   });
 }
 
-export async function addMemberAction(_: ActionState, fd: FormData) {
+export async function inviteMemberAction(_: ActionState, fd: FormData) {
   return withOrg(fd, async (ctx, input) => {
-    await addMember(ctx, { email: input.email ?? "", role: (input.role ?? "VIEWER") as "VIEWER" });
-    return "Member added.";
+    const inv = await createInvitation(ctx, { email: input.email ?? "", role: (input.role ?? "VIEWER") as "VIEWER" });
+    return `Invitation sent to ${inv.email}.`;
+  });
+}
+
+export async function revokeInvitationAction(_: ActionState, fd: FormData) {
+  return withOrg(fd, async (ctx, input) => {
+    await revokeInvitation(ctx, input.invitationId ?? "");
+    return "Invitation withdrawn.";
   });
 }
 

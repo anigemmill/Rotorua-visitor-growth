@@ -49,6 +49,13 @@ export default async function WorkspacesPage() {
         </ul>
       )}
 
+      {!user.emailVerified ? (
+        <Panel title="Confirm your email to get started" description={`We sent a confirmation link to ${user.email}. Once confirmed, you can create your workspace.`}>
+          <Link href="/verify-email" className="text-sm font-medium text-teal-700 underline dark:text-teal-400">
+            Didn&apos;t get it? Send a new link
+          </Link>
+        </Panel>
+      ) : (
       <Panel
         title={memberships.length ? "Create another workspace" : "Create your business workspace"}
         description="A workspace holds one business's profile, brands, connections and intelligence. Your data is never shared with other workspaces."
@@ -59,6 +66,7 @@ export default async function WorkspacesPage() {
           <SubmitButton>Create workspace</SubmitButton>
         </ActionForm>
       </Panel>
+      )}
     </div>
   );
 }

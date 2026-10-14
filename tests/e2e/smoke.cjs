@@ -2,8 +2,9 @@
 // End-to-end smoke test of the Phase 1 customer journey and isolation
 // guarantees against a running server (uses a fresh pair of accounts each run).
 //
-//   PORT=3100 npm start          # in another terminal, against a seeded dev DB
-//   BASE_URL=http://localhost:3100 node tests/e2e/smoke.cjs [screenshot-dir]
+//   EMAIL_TRANSPORT=file EMAIL_FILE_DIR=/tmp/outbox EMAIL_FILE_TRANSPORT_ALLOWED=true \
+//     APP_URL=http://localhost:3100 PORT=3100 npm start      # seeded dev DB
+//   BASE_URL=http://localhost:3100 EMAIL_FILE_DIR=/tmp/outbox node tests/e2e/smoke.cjs [screenshot-dir]
 //
 // Requires the `playwright` package (local or global install).
 const path = require("path");
@@ -19,7 +20,22 @@ try {
 const { chromium } = playwright;
 const BASE = process.env.BASE_URL || "http://localhost:3100";
 const SHOTS = process.argv[2] || fs.mkdtempSync(path.join(os.tmpdir(), "smoke-"));
+const OUTBOX = process.env.EMAIL_FILE_DIR;
+if (!OUTBOX) throw new Error("Set EMAIL_FILE_DIR to the server's file-transport outbox.");
 const results = [];
+
+/** Waits for the newest email of a kind to an address and returns the link in it. */
+async function emailLink(to, tag) {
+  for (let i = 0; i < 50; i++) {
+    const files = fs.existsSync(OUTBOX) ? fs.readdirSync(OUTBOX).sort().reverse() : [];
+    for (const f of files) {
+      const m = JSON.parse(fs.readFileSync(path.join(OUTBOX, f), "utf8"));
+      if (m.to === to && m.tag === tag) return m.text.match(/https?:\/\/\S+/)[0];
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  throw new Error(`No ${tag} email to ${to}`);
+}
 const check = (name, ok, extra = "") => { results.push(`${ok ? "PASS" : "FAIL"} ${name} ${extra}`); };
 
 (async () => {
@@ -46,7 +62,18 @@ const check = (name, ok, extra = "") => { results.push(`${ok ? "PASS" : "FAIL"} 
   check("weak password rejected server-side, input kept", (await a.inputValue("#f-email")) === ownerEmail);
   await a.fill("#f-password", "a sufficiently long passphrase");
   await a.click("button[type=submit]");
-  await a.waitForURL("**/workspaces");
+  await a.waitForURL("**/verify-email");
+  await a.goto(`${BASE}/workspaces`);
+  check("unverified user cannot create a workspace", (await a.locator("text=Create workspace").count()) === 0);
+  const verifyLink = await emailLink(ownerEmail, "verify_email");
+  await a.goto(verifyLink);
+  await a.waitForSelector("text=Email confirmed");
+  check("verification link confirms the email", true);
+  // Reusing the link (from a signed-out browser) must not work.
+  const anon = await (await browser.newContext()).newPage();
+  await anon.goto(verifyLink);
+  check("verification link is single-use", (await anon.textContent("body")).includes("invalid or has expired"));
+  await a.goto(`${BASE}/workspaces`);
   const cookies = await ctxA.cookies();
   const sess = cookies.find((c) => c.name.includes("tip_session"));
   check("session cookie httpOnly + lax", sess && sess.httpOnly && sess.sameSite === "Lax", JSON.stringify(sess && { n: sess.name, h: sess.httpOnly, s: sess.sameSite }));
@@ -132,7 +159,7 @@ const check = (name, ok, extra = "") => { results.push(`${ok ? "PASS" : "FAIL"} 
   await b.fill("#f-email", otherEmail);
   await b.fill("#f-password", "another long passphrase");
   await b.click("button[type=submit]");
-  await b.waitForURL("**/workspaces");
+  await b.waitForURL("**/verify-email");
   let r = await b.goto(orgUrl);
   check("non-member gets 404 for other tenant", r.status() === 404, String(r.status()));
   r = await b.goto(`${BASE}/admin`);
@@ -144,15 +171,55 @@ const check = (name, ok, extra = "") => { results.push(`${ok ? "PASS" : "FAIL"} 
   r = await b.request.post(`${BASE}/api/connectors/run`);
   check("legacy connector run API refused", r.status() === 403, String(r.status()));
 
-  // Owner adds other as viewer; viewer can't edit
+  // Owner invites the other user as a viewer; they accept from the emailed link.
   await a.goto(`${orgUrl}/settings/team`);
   await a.fill("#f-email", otherEmail);
-  await a.click("text=Add member");
-  await a.waitForSelector("text=Member added.");
+  await a.click("text=Send invitation");
+  await a.waitForSelector(`text=Invitation sent to ${otherEmail}`);
+  check("invitation listed as pending", (await a.textContent("body")).includes("Pending invitations"));
+  const inviteLink = await emailLink(otherEmail, "invitation");
+  await b.goto(inviteLink);
+  await b.screenshot({ path: `${SHOTS}/06-invite.png` });
+  await b.click("text=Accept and open workspace");
+  await b.waitForURL(`${orgUrl}**`);
   r = await b.goto(orgUrl);
-  check("viewer can open workspace after being added", r.status() === 200, String(r.status()));
+  check("invitee becomes a member (and is verified by the link)", r.status() === 200, String(r.status()));
+  await b.goto(inviteLink);
+  check("invitation link is single-use", (await b.textContent("body")).includes("already been accepted"));
   await b.goto(`${orgUrl}/onboarding/profile`);
   check("viewer sees no save button", (await b.locator("text=Save business profile").count()) === 0);
+
+  // Password reset: request, email link, new password, old sessions revoked.
+  const ctxC = await browser.newContext();
+  const c = await ctxC.newPage();
+  await c.goto(`${BASE}/forgot-password`);
+  await c.fill("#f-email", otherEmail);
+  await c.click("text=Email me a reset link");
+  await c.waitForSelector("text=If an account uses that address");
+  await c.goto(`${BASE}/forgot-password`);
+  await c.fill("#f-email", `nobody${stamp}@example.com`);
+  await c.click("text=Email me a reset link");
+  await c.waitForSelector("text=If an account uses that address");
+  check("reset response identical for unknown address", true);
+  const resetLink = await emailLink(otherEmail, "password_reset");
+  await c.goto(resetLink);
+  await c.fill("#f-password", "a brand new passphrase");
+  await c.fill("#f-confirm", "a brand new passphrase");
+  await c.click("text=Set new password");
+  await c.waitForURL("**/login?reset=1");
+  r = await b.goto(orgUrl);
+  check("password reset signs out existing sessions", b.url().includes("/login"), b.url());
+  await c.fill("#f-email", otherEmail);
+  await c.fill("#f-password", "a brand new passphrase");
+  await c.click("button[type=submit]:has-text(\"Sign in\")");
+  await c.waitForURL("**/workspaces");
+  check("can sign in with the new password", true);
+  await c.goto(resetLink);
+  await c.fill("#f-password", "yet another passphrase");
+  await c.fill("#f-confirm", "yet another passphrase");
+  await c.click("text=Set new password");
+  await c.waitForSelector("p[role=alert]");
+  check("reset link is single-use", (await c.textContent("p[role=alert]")).includes("invalid or has expired"));
 
   // Logout invalidates session
   await a.goto(`${orgUrl}`);

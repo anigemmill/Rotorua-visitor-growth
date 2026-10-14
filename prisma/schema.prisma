@@ -694,6 +694,7 @@ model User {
 
   sessions    AuthSession[]
   memberships Membership[]
+  tokens      UserToken[]
 }
 
 // Opaque, server-side sessions. Only the SHA-256 of the cookie token is
@@ -732,6 +733,7 @@ model Organization {
   auditEvents  AuditEvent[]
   usageRecords UsageRecord[]
   usageAlerts  UsageAlert[]
+  invitations  Invitation[]
 }
 
 model Membership {
@@ -1000,4 +1002,46 @@ model UsageAlert {
   createdAt      DateTime     @default(now())
 
   @@unique([organizationId, periodStart, level])
+}
+
+// ---------------------------------------------------------------------------
+// Account security: email verification, password reset, invitations
+// ---------------------------------------------------------------------------
+
+enum UserTokenPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+// Single-use, expiring tokens sent by email. Only the SHA-256 is stored.
+model UserToken {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  purpose   UserTokenPurpose
+  tokenHash String           @unique
+  // The email the token was issued to; a token is void if the account email changes.
+  email     String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, purpose])
+}
+
+model Invitation {
+  id             String         @id @default(cuid())
+  organizationId String
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String // lower-cased
+  role           MembershipRole
+  tokenHash      String         @unique
+  invitedById    String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedById   String?
+  revokedAt      DateTime?
+  createdAt      DateTime       @default(now())
+
+  @@index([organizationId, email])
 }
