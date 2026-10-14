@@ -1,0 +1,14 @@
+.git
+.github
+node_modules
+.next
+.env
+.env.*
+!.env.example
+.email-outbox
+coverage
+tests
+docs
+*.md
+!README.md
+src/generated

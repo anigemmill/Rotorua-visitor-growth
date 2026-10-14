@@ -21,7 +21,8 @@ function workflows(v: number | null | undefined) {
 
 export function formatPrice(cents: number | null, currency: string): string {
   if (cents == null) return "Custom pricing";
-  return new Intl.NumberFormat("en-NZ", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
+  // en-US renders an unambiguous symbol for non-USD currencies (NZ$, A$).
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 0 }).format(cents / 100);
 }
 
 export function PlanSummary({ e, showExcluded = false }: { e: Entitlements; showExcluded?: boolean }) {

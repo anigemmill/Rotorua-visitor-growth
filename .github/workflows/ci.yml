@@ -118,6 +118,19 @@ jobs:
             smoke-screenshots/
           retention-days: 7
 
+  container:
+    name: Container image builds
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build runtime image
+        run: docker build --target runtime -t tourism-web:ci .
+      - name: Build migration image
+        run: docker build --target migrate -t tourism-migrate:ci .
+      - name: Runtime image runs as non-root
+        run: test "$(docker run --rm --entrypoint id tourism-web:ci -u)" != "0"
+
   dependency-audit:
     name: Dependency vulnerability audit
     runs-on: ubuntu-latest
