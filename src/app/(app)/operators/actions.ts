@@ -89,7 +89,7 @@ export async function updateGovernance(id: string, _: ActionState, fd: FormData)
   });
 }
 
-export async function startAssessment(operatorId: string, _: ActionState): Promise<ActionState> {
+export async function startAssessment(operatorId: string): Promise<ActionState> {
   const user = await requireStaff();
   let id = "";
   const res = await guarded(async () => {
