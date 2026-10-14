@@ -41,7 +41,7 @@ running, so expired or disconnected tenants never sync.
 | 1 | Google Analytics 4 — Data API v1 (+ Admin API for account/property list) | OAuth 2.0 (web server flow) | `analytics.readonly` | Google Cloud project, OAuth consent screen. `analytics.readonly` is a **sensitive** scope → Google OAuth app verification before public launch (testing mode limited to 100 test users) | 2 | Designed |
 | 2 | Google Search Console API | OAuth 2.0 | `webmasters.readonly` | Same Cloud project and consent screen; sensitive scope verification | 2 | Designed |
 | 3 | Website + sitemaps + PageSpeed Insights API | None (public pages); PSI uses an API key | — | PSI API key (server-side). URL Inspection API only for verified, authorised Search Console properties (quota-limited) | 2 | Domain capture live; crawler Phase 2 |
-| 4 | Google Ads API | OAuth 2.0 + developer token / Cloud-project access level | `adwords` (no read-only scope exists — we call reporting only) | See §3: access level now appears tied to the Cloud project; Basic/Standard access needs an application and review; manager (MCC) account for test accounts | 4 | Designed |
+| 4 | Google Ads API | OAuth 2.0; access level held by the **Google Cloud project** (developer tokens sunset 9 Sep 2026) | `adwords` (no read-only scope exists — we call reporting only) | Enable the API in our Cloud project; apply for Explorer/Basic/Standard from the Cloud Console's Google Ads API overview page; test accounts under a test manager account. See §3 | 4 | Designed |
 | 5 | Meta Marketing API (Insights) | Facebook Login for Business | `ads_read` | Meta app, Business Verification, App Review for `ads_read`; Marketing API Access Tier — "Limited Access" is development only, "Full Access" needed for live advertisers | 4 | Designed |
 | 6a | Instagram API with Instagram Login | Business Login for Instagram | `instagram_business_basic`, `instagram_business_manage_insights` | App Review + Advanced access to serve accounts we don't own | 4 | Designed |
 | 6b | Facebook Pages insights | Facebook Login | `pages_show_list`, `read_insights`, `pages_read_engagement` | App Review | 4 | Designed |
@@ -76,17 +76,44 @@ agent; per-host rate limit; DNS-resolve-then-block private/link-local/
 metadata ranges on every request and redirect (SSRF); size and page caps
 per plan.
 
-**Google Ads.** Secondary sources report that from **September 2026**
-developer tokens were sunset and API access levels now belong to the Google
-Cloud project that issued the OAuth credentials, with newer API versions
-returning `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION` for test-level
-projects. Google's own pages still describe Explorer/Basic/Standard access
-levels and application review. **Blocker: confirm current access model on
-Google's pages and apply early** — reviews have had backlogs.
-Docs: <https://developers.google.com/google-ads/api/docs/api-policy/access-levels>,
-<https://developers.google.com/google-ads/api/docs/first-call/dev-token>.
-Secondary: [PPC Land](https://ppc.land/google-drops-developer-tokens-from-ads-api-access-decisions/),
-[Relevant Audience](https://www.relevantaudience.com/google-ads-en/google-ads-api-developer-tokens-sunset-cloud-project-access/).
+**Google Ads.** Confirmed on Google's official pages (checked 2026-10-14):
+developer tokens were **sunset on 9 September 2026**, and API access
+levels now belong to the **Google Cloud project** that issues the OAuth
+credentials. Levels: Test (test accounts only), Explorer (2,880 production
+operations/day, some features restricted), Basic (15,000 operations) and
+Standard (unlimited). Applications are made from the Google Ads API
+overview page in the Cloud Console; the API Center in manager accounts is
+deprecated. Existing tokens and access do not move to a new project, so a
+new project starts at Test until approved. Calls from an unapproved project
+return `CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION`.
+
+Implementation plan (Phase 4):
+1. Use our production Google Cloud project, the same one that holds the
+   GA4/GSC OAuth client, so verification is shared. Enable the Google Ads
+   API there.
+2. OAuth consent with the `adwords` scope (sensitive; include it in
+   Google's OAuth verification). Store refresh tokens encrypted.
+3. Apply for **Explorer** first (enough for reporting pilots), then
+   **Basic** before general availability. Record the approved level and
+   date in the connector README.
+4. Use a current, supported client library or REST without the
+   `developer-token` header. Google states a future major API version will
+   reject that header.
+5. Build and test against **test accounts** under a test manager account;
+   validate production access with a real pilot account before launch.
+6. Read-only GAQL reporting (campaign, ad group, metrics, conversion
+   value) through the `SearchStream` reporting endpoint. No mutate calls.
+
+Open items: our project's approved access level (none yet); a known issue
+where projects upgraded after 9 Sep 2026 can get `AUTHORIZATION_ERROR` on
+production accounts (track Google's status page); OAuth verification
+covering `adwords`.
+
+Docs: [Cloud-managed access levels](https://developers.google.com/google-ads/api/docs/concepts/no-developer-token),
+[Developer token (sunset notice)](https://developers.google.com/google-ads/api/docs/api-policy/developer-token),
+[Access levels](https://developers.google.com/google-ads/api/docs/api-policy/access-levels),
+[Quick start](https://developers.google.com/google-ads/api/docs/get-started/make-first-call),
+[Quotas](https://developers.google.com/google-ads/api/docs/best-practices/quotas).
 
 **Meta.** As of Meta's authorization doc (updated May 2026) the Ads
 Management Standard Access feature is now the "Marketing API Access Tier",
@@ -130,9 +157,9 @@ the same period.
 | Google Cloud project + OAuth consent screen (production) | GA4, Search Console, YouTube, Ads | Days; **sensitive-scope verification** weeks |
 | Privacy policy + terms URLs on your domain, domain verification | All OAuth consent screens, Meta App Review | Before any verification |
 | PageSpeed Insights API key | Website audits | Minutes |
-| Google Ads API access approval for the Cloud project | Google Ads | Weeks (backlogs reported) |
+| Google Ads API access level (Explorer → Basic) for our Cloud project, applied for via the Cloud Console | Google Ads | Weeks (backlogs reported) |
 | Meta app, Business Verification, App Review (`ads_read`, Instagram/Pages insights), Full Access tier | Meta, Instagram, Facebook | Weeks |
 | Rezdy partner/staging access | Booking | Depends on Rezdy |
 | Anthropic API key + organisation data-retention settings | Agents | Minutes; review terms |
+| AWS account (Sydney) + SES domain identity, out of sandbox | Email, hosting | Days |
 | Stripe account | Billing | Days |
-| Email provider (Postmark/SES/Resend) | Verification, reset, invites, reports | Days (domain DNS) |

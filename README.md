@@ -17,7 +17,10 @@ Platform documentation lives in [`docs/platform/`](docs/platform/):
 [security](docs/platform/SECURITY.md) ·
 [integrations](docs/platform/INTEGRATIONS.md) ·
 [agent register](docs/platform/AGENT_REGISTER.md) ·
-[roadmap, risks & acceptance tests](docs/platform/ROADMAP.md).
+[roadmap, risks & acceptance tests](docs/platform/ROADMAP.md) ·
+[hosting & data locations](docs/platform/HOSTING.md) ·
+[AI usage allowance](docs/platform/USAGE_ALLOWANCE.md) ·
+[dependency security](docs/platform/DEPENDENCY_SECURITY.md).
 
 ## Quick start
 
@@ -29,8 +32,10 @@ npm run db:seed          # catalogue (products/plans) + destination reference da
 npm run dev
 ```
 
-1. Open http://localhost:3000, create an account and a workspace.
-2. Start the 30-day pilot under **Licence & plan**, then work through
+1. Open http://localhost:3000 and create an account. In development, emails
+   (verification, invitations, password resets) are written as JSON files to
+   `.email-outbox/` — open the newest one and follow its link.
+2. Create a workspace, start the 30-day Starter trial under **Licence & plan**, then work through
    onboarding (profile → knowledge → connections → validation → activation).
 3. To use the admin area, promote an account (there is no web path to do this):
    `npm run admin:promote -- you@example.com SUPER_ADMIN`, then sign in again
@@ -43,7 +48,9 @@ npm test            # Vitest: unit + integration tests against TEST_DATABASE_URL
 npm run lint
 npm run typecheck
 npm run build
-node tests/e2e/smoke.cjs   # browser smoke test against a running server (needs playwright)
+# browser smoke test (needs playwright) — see the header of tests/e2e/smoke.cjs for the server env
+EMAIL_FILE_DIR=/tmp/outbox node tests/e2e/smoke.cjs
+docker build -t tourism-web .   # production image (CI builds it on every push)
 ```
 
 ## Layout

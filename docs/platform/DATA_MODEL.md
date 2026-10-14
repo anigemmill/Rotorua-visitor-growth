@@ -34,15 +34,22 @@ erDiagram
 | `IntegrationConnection` | yes | Provider key + external account id (unique per org), status, scopes, encrypted credentials, sync timestamps, last error. Revoked rows are kept for history with credentials destroyed. |
 | `AuditEvent` | yes (nullable for platform events) | Actor id + denormalised email + IP, action, target, metadata. |
 | `RateLimitBucket` | no | Fixed-window counters updated atomically in SQL. |
+| `UserToken` | no (user-scoped) | Hashed single-use email-verification and password-reset tokens, bound to the address they were sent to. |
+| `Invitation` | yes | Hashed 7-day invitation token, email, role, accepted/revoked timestamps. |
+| `ModelRate` | no | Claude list prices in integer micro-USD per million tokens, versioned by `effectiveFrom`. |
+| `UsageRecord` | yes | One row per model call: tokens by type, batch flag, computed cost; unique per provider request id. |
+| `UsageAlert` | yes | Warning / limit notices raised once per organisation per month. |
 
 ### Entitlements JSON
 
 ```jsonc
 {
   "features": { "integrations.ga4": true, "reports.weekly_brief": true /* … */ },
-  "limits": { "brands": 3, "users": 10, "integrations": 10,
-              "scheduledWorkflows": 10, "monthlyAgentRuns": 500,
-              "monthlyModelBudgetUsd": 250 }   // null = unlimited
+  "limits": { "brands": 3, "users": 5, "integrations": 6,
+              "historyDays": 365, "customWorkflows": 2 },   // null = custom / no limit
+  "reporting": { "cadences": ["daily", "weekly"] },
+  "support": { "tier": "priority" },
+  "ai": { "monthlyAllowanceUsd": 80, "warnAtPercent": 80, "hardLimitPercent": 110 }  // never unlimited
 }
 ```
 
@@ -74,7 +81,6 @@ tenant-scoped (`organizationId` non-null, added to `TENANT_MODELS`).
 | `Recommendation` / `Action` | 3 | Action register: issue, evidence, relevance, confidence, estimated impact (labelled estimate), effort, urgency, dependencies, next step, measurement criteria, status (PROPOSED → AWAITING_APPROVAL → APPROVED → IN_PROGRESS → COMPLETED → MEASURED / REJECTED / SUPERSEDED), notes, approver, timestamps. |
 | `Outcome` / `Lesson` | 3 | Measured result vs. baseline with method and caveats; lessons and data limitations. |
 | `Report` | 3 | Rendered brief with immutable JSON body referencing findings. |
-| `UsageRecord` | 3 | Per-tenant ledger: model tokens, cost (micro-USD), API calls, agent runs; drives budget enforcement and admin cost views. |
 | `Notification` | 3 | Alerts and digests per user. |
 | `Booking` | 5 | Pseudonymous booking facts: provider booking id (hashed), created/activity dates, product, status, value + currency, party size, refund, referral/campaign code. No traveller PII by default. |
 | `KnowledgeDocument` | 3 | Approved reference documents (object storage key, checksum, approval). |

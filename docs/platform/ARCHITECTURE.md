@@ -98,10 +98,12 @@ The UI hides controls a role can't use, but hiding is never the enforcement.
 | Secrets | Env-injected key ring now (`CREDENTIAL_ENCRYPTION_KEYS`) → cloud KMS envelope encryption before production | AES-256-GCM, versioned keys, row-bound AAD (src/lib/platform/crypto.ts). |
 | File/document storage | S3-compatible object storage (Phase 2/3) | Reference documents, crawl snapshots, report exports. Tenant-prefixed keys, server-generated signed URLs only. |
 | Claude integration | **Official `@anthropic-ai/sdk`, Messages API, self-orchestrated workflows** — Phase 3 | See §5. |
+| Email | **Amazon SES (Sydney)** behind `email.ts`; file/memory transports for dev/CI/tests | Same region as the data; IAM credentials, no API keys. |
 | Billing | **Stripe** (Billing + Customer Portal + webhooks) — after pilot pricing is set | Licence rows already carry `billingProvider` / external ids; webhooks will be the only path that sets paid statuses. Manual staff provisioning until then. |
-| Hosting | Container on a managed platform (e.g. Render / Fly / AWS ECS) + managed Postgres with PITR; workers as a second process | Long-running workers and egress control rule out pure serverless for the job tier. Data residency for NZ/AU customers to be decided (Sydney region likely). |
+| Hosting | **AWS ap-southeast-2 (Sydney)**: ECS Fargate (web + worker), RDS PostgreSQL, S3, Secrets Manager/KMS — see HOSTING.md | Decision 2026-10-14. Container image (`Dockerfile`) keeps it portable. Not yet provisioned. |
+| CI/CD | GitHub Actions: lint, types, tests, build, browser smoke, audit gates, gitleaks, container builds; deploy gated on CI | `.github/workflows/` |
 | Monitoring | Sentry (errors), OpenTelemetry traces, structured logs | Phase 6, with per-tenant cost dashboards. |
-| Tests | **Vitest** unit + integration against a real Postgres test database; Playwright end-to-end | 72 automated tests in Phase 1, plus a 27-check browser smoke run. |
+| Tests | **Vitest** unit + integration against a real Postgres test database; Playwright end-to-end | 108 automated tests plus a 31-check browser smoke run, all in CI. |
 
 ## 4. Multi-tenancy model (summary — detail in SECURITY.md)
 

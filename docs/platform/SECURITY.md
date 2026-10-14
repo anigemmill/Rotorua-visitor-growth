@@ -17,8 +17,14 @@ document, **not** a statement of regulatory compliance; items marked
 | CSRF | Server Actions are POST-only and Next.js checks Origin vs Host; SameSite=Lax cookie | framework |
 | Platform roles | Only via `npm run admin:promote` (audited, revokes existing sessions); no web path can grant them | `auth.test.ts` (self-assignment ignored) |
 
-Gaps before production: email verification, password reset, MFA (via
-managed IdP), session list/“sign out everywhere” UI, breached-password check.
+| Email verification | Required before creating a workspace or starting a trial; 24 h single-use link bound to the address; resend rate-limited | `account.test.ts`, browser smoke |
+| Password reset | 30-min single-use link; identical response for unknown addresses (email sent after the response); per-email and per-IP limits; all sessions revoked; "password changed" notice | `account.test.ts`, browser smoke |
+| Invitations | Owner-only, verified inviter, licence and seat checks, 7-day single-use link, only the invited address can accept | `account.test.ts`, browser smoke |
+| Email transport | SES (Sydney) with IAM-role credentials in production; production refuses other transports; no tracking pixels | `email.ts` |
+
+Gaps before production: MFA/SSO (via managed IdP), a session list with
+"sign out everywhere" in the UI, a breached-password check, and a change-email
+flow (which must re-verify the new address).
 
 ## 2. Authorisation and tenant isolation
 
@@ -80,11 +86,14 @@ organisation id, never the global client.
 | Elevation | Customer reaches `/admin` | Server-side platform-role check, 404 | Built, tested |
 | SSRF | Crawler pointed at internal hosts | Domain validation (no IPs/localhost/internal TLDs) now; resolve-and-check every fetch + egress proxy (Phase 2) | Partial |
 | Prompt injection | Website/social/doc text instructs an agent | Untrusted content in delimited data blocks; agents have read-only tools only; outputs schema-validated; no consequential action without human approval; injection eval set | Phase 3 |
-| Supply chain | Vulnerable npm deps | `npm audit` currently reports issues in the existing tree — triage in Phase 6 with Dependabot/Renovate | Open |
+| Supply chain | Vulnerable npm deps, leaked secrets | Remediated 2026-10-14 (DEPENDENCY_SECURITY.md); CI audit gates, gitleaks, Dependabot | Built |
+| Spoofing | Account takeover via reset / invite links | Hashed single-use expiring tokens bound to the address; rate limits; session revocation on reset | Built, tested |
+| Abuse | Using invitations or resets to spam third parties | Owner-only, verified, licensed inviters; per-org and per-address limits | Built |
 | Clickjacking | Framing the app | `X-Frame-Options: DENY`, `frame-ancestors 'none'` | Built |
 
 ## 5. Data flows
 
+0. **Locations:** see HOSTING.md §2 for where each kind of data is stored and processed.
 1. **Customer → app:** profile, knowledge, brands (stored in tenant rows).
 2. **App → providers (Phase 2+):** worker uses decrypted token in memory
    only → read-only API → normalised observations in tenant rows.

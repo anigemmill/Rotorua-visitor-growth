@@ -3,7 +3,7 @@
 // honestly: "planned" providers are listed so customers can see the roadmap
 // but cannot be connected until their connector is built and tested.
 //
-// Official documentation links were checked on 2026-10-13; access
+// Official documentation links were checked on 2026-10-13 (Google Ads 2026-10-14); access
 // prerequisites are tracked in docs/platform/INTEGRATIONS.md.
 
 import type { ProviderDefinition, ProviderKey } from "./types";
@@ -95,10 +95,12 @@ export const PROVIDERS: ProviderDefinition[] = [
     availability: "planned",
     plannedPhase: 4,
     setupSteps: ["Sign in with Google.", "Choose the Ads customer account (or manager account)."],
+    // Access is granted to our Google Cloud project (developer tokens were sunset on 2026-09-09).
     limitations: ["Read-only reporting. We never change bids, budgets or campaigns."],
     officialDocs: [
-      "https://developers.google.com/google-ads/api/docs/start",
+      "https://developers.google.com/google-ads/api/docs/concepts/no-developer-token",
       "https://developers.google.com/google-ads/api/docs/api-policy/access-levels",
+      "https://developers.google.com/google-ads/api/docs/get-started/make-first-call",
     ],
   },
   {
